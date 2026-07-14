@@ -163,6 +163,35 @@ fn map_parse_error(err: crate::parse::ParseError, source: CsvSource) -> EngineEr
     }
 }
 
+/// Detect all columns except PHN, then inject the user-provided PHN index.
+/// This is used when auto-detection can't find a PHN header — the manual
+/// column picker provides the index directly.
+fn detect_columns_with_phn_override(
+    headers: &[String],
+    is_pas: bool,
+    phn_idx: usize,
+) -> ColumnMapping {
+    use crate::detect::{find_column, DOB_PATTERNS, FIRST_PATTERNS, LAST_PATTERNS, STATUS_PATTERNS, UPDATED_PATTERNS};
+
+    let (mrp_status, mrp_updated) = if is_pas {
+        (
+            find_column(headers, STATUS_PATTERNS),
+            find_column(headers, UPDATED_PATTERNS),
+        )
+    } else {
+        (None, None)
+    };
+
+    ColumnMapping {
+        phn: phn_idx,
+        first_name: find_column(headers, FIRST_PATTERNS),
+        last_name: find_column(headers, LAST_PATTERNS),
+        dob: find_column(headers, DOB_PATTERNS),
+        mrp_status,
+        mrp_updated,
+    }
+}
+
 /// Run the full pipeline. `emr_phn_column` / `pas_phn_column` override auto-detection
 /// when set (used by the manual column-picker fallback).
 pub fn reconcile_with_columns(
@@ -176,25 +205,18 @@ pub fn reconcile_with_columns(
     let pas_parsed = parse_csv(pas_csv).map_err(|e| map_parse_error(e, CsvSource::Pas))?;
 
     // --- Detect columns ---
+    // When a PHN override is provided (manual column picker), we skip PHN
+    // auto-detection entirely and only detect the other fields. This avoids
+    // MissingPhnColumn errors when the header doesn't match known patterns.
     let emr_mapping = if let Some(phn_idx) = emr_phn_override {
-        detect_columns(&emr_parsed.headers, false)
-            .map(|mut m| {
-                m.phn = phn_idx;
-                m
-            })
-            .map_err(|e| map_detection_error(e, CsvSource::Emr))?
+        detect_columns_with_phn_override(&emr_parsed.headers, false, phn_idx)
     } else {
         detect_columns(&emr_parsed.headers, false)
             .map_err(|e| map_detection_error(e, CsvSource::Emr))?
     };
 
     let pas_mapping = if let Some(phn_idx) = pas_phn_override {
-        detect_columns(&pas_parsed.headers, true)
-            .map(|mut m| {
-                m.phn = phn_idx;
-                m
-            })
-            .map_err(|e| map_detection_error(e, CsvSource::Pas))?
+        detect_columns_with_phn_override(&pas_parsed.headers, true, phn_idx)
     } else {
         detect_columns(&pas_parsed.headers, true)
             .map_err(|e| map_detection_error(e, CsvSource::Pas))?

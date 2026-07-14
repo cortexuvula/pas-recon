@@ -12,17 +12,24 @@ pub enum DetectionError {
 
 /// Header patterns for each recognized field. Matched case-insensitively
 /// after trimming whitespace.
-const PHN_PATTERNS: &[&str] = &["phn", "personal health number", "bc phn", "health number"];
-const FIRST_PATTERNS: &[&str] = &["first", "first name", "given", "given name", "fname"];
-const LAST_PATTERNS: &[&str] = &["last", "last name", "surname", "family", "lname"];
-const DOB_PATTERNS: &[&str] = &["dob", "date of birth", "birth date", "birthdate"];
-const STATUS_PATTERNS: &[&str] = &["mrp status", "status", "attachment status"];
-const UPDATED_PATTERNS: &[&str] = &["mrp updated", "mrp updated date", "updated", "last updated"];
+pub const PHN_PATTERNS: &[&str] = &["phn", "personal health number", "bc phn", "health number"];
+pub const FIRST_PATTERNS: &[&str] = &["first", "first name", "given", "given name", "fname"];
+pub const LAST_PATTERNS: &[&str] = &["last", "last name", "surname", "family", "lname"];
+pub const DOB_PATTERNS: &[&str] = &["dob", "date of birth", "birth date", "birthdate"];
+pub const STATUS_PATTERNS: &[&str] = &["mrp status", "status", "attachment status"];
+pub const UPDATED_PATTERNS: &[&str] = &["mrp updated", "mrp updated date", "updated", "last updated"];
 
-fn find_column(headers: &[String], patterns: &[&str]) -> Option<usize> {
+/// Check if a header matches any of the patterns using substring matching
+/// (contains), like the spreadsheet's COUNTIF(..., "*pattern*").
+/// Case-insensitive after trimming whitespace.
+fn header_matches(normalized_header: &str, patterns: &[&str]) -> bool {
+    patterns.iter().any(|p| normalized_header.contains(p))
+}
+
+pub fn find_column(headers: &[String], patterns: &[&str]) -> Option<usize> {
     for (idx, header) in headers.iter().enumerate() {
         let normalized = header.trim().to_lowercase();
-        if patterns.iter().any(|p| normalized == *p) {
+        if header_matches(&normalized, patterns) {
             return Some(idx);
         }
     }
@@ -35,7 +42,7 @@ fn find_all_columns(headers: &[String], patterns: &[&str]) -> Vec<usize> {
         .enumerate()
         .filter(|(_, h)| {
             let normalized = h.trim().to_lowercase();
-            patterns.iter().any(|p| normalized == *p)
+            header_matches(&normalized, patterns)
         })
         .map(|(idx, _)| idx)
         .collect()

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import Sidebar from "./components/Sidebar";
 import ListTabs from "./components/ListTabs";
 import PatientTable from "./components/PatientTable";
@@ -28,31 +28,27 @@ export default function App() {
   const [showColumnPicker, setShowColumnPicker] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
 
+  // Ref to hold the latest emrPath/pasPath so the drag-drop listener
+  // (registered once) always sees current values without stale closures.
+  const emrPathRef = useRef<string | null>(null);
+  const pasPathRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    emrPathRef.current = emrPath;
+  }, [emrPath]);
+  useEffect(() => {
+    pasPathRef.current = pasPath;
+  }, [pasPath]);
+
   useEffect(() => {
     const unlisten = onUpdateAvailable((info) => setUpdate(info));
     return () => { unlisten.then((fn) => fn()); };
   }, []);
 
-  // Register Tauri-native drag-and-drop at the window level.
-  // Unlike HTML5 drag events, this provides real file paths from the OS.
-  useEffect(() => {
-    const unlisten = onDragDropEvent((event) => {
-      if (event.type === "enter" || event.type === "over") {
-        setIsDragging(true);
-      } else if (event.type === "leave") {
-        setIsDragging(false);
-      } else if (event.type === "drop") {
-        setIsDragging(false);
-        handlePathsDropped(event.paths);
-      }
-    });
-    return () => { unlisten.then((fn) => fn()); };
-  }, []);
-
   const handlePathsDropped = useCallback(async (paths: string[]) => {
     setError(null);
-    let newEmrPath = emrPath;
-    let newPasPath = pasPath;
+    let newEmrPath = emrPathRef.current;
+    let newPasPath = pasPathRef.current;
 
     for (const path of paths) {
       const name = path.toLowerCase();
@@ -83,7 +79,23 @@ export default function App() {
         }
       }
     }
-  }, [emrPath, pasPath]);
+  }, []);
+
+  // Register Tauri-native drag-and-drop at the window level.
+  // Registered once; uses refs to avoid stale closures.
+  useEffect(() => {
+    const unlisten = onDragDropEvent((event) => {
+      if (event.type === "enter" || event.type === "over") {
+        setIsDragging(true);
+      } else if (event.type === "leave") {
+        setIsDragging(false);
+      } else if (event.type === "drop") {
+        setIsDragging(false);
+        handlePathsDropped(event.paths);
+      }
+    });
+    return () => { unlisten.then((fn) => fn()); };
+  }, [handlePathsDropped]);
 
   const handleColumnPickerResolved = useCallback(async (emrCol: number, pasCol: number) => {
     if (!emrPath || !pasPath) return;
