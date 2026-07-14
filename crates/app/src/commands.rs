@@ -98,6 +98,15 @@ pub fn export_list(
     Ok(())
 }
 
+/// Read just the header row of a CSV file. Used by the column-picker fallback
+/// when auto-detection fails.
+#[tauri::command]
+pub fn get_csv_headers(path: String) -> Result<Vec<String>, String> {
+    let bytes = std::fs::read(&path).map_err(|e| e.to_string())?;
+    let parsed = pas_recon_engine::parse::parse_csv(&bytes).map_err(|e| e.to_string())?;
+    Ok(parsed.headers)
+}
+
 /// Check GitHub Releases for a newer version. Returns Some(info) if an update exists.
 #[tauri::command]
 pub async fn check_for_updates(

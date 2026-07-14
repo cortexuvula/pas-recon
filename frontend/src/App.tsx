@@ -4,8 +4,10 @@ import ListTabs from "./components/ListTabs";
 import PatientTable from "./components/PatientTable";
 import UpdateToast from "./components/UpdateToast";
 import EmptyState from "./components/EmptyState";
+import ColumnPicker from "./components/ColumnPicker";
 import {
   reconcileFiles,
+  reconcileWithColumnOverride,
   exportList,
   onUpdateAvailable,
 } from "./api";
@@ -22,6 +24,7 @@ export default function App() {
   const [searchQuery, setSearchQuery] = useState("");
   const [resolved, setResolved] = useState<Set<string>>(new Set());
   const [update, setUpdate] = useState<UpdateInfo | null>(null);
+  const [showColumnPicker, setShowColumnPicker] = useState(false);
 
   useEffect(() => {
     const unlisten = onUpdateAvailable((info) => setUpdate(info));
@@ -55,12 +58,26 @@ export default function App() {
         setActiveList("emr_no_match");
       } catch (e: any) {
         const errStr = typeof e === "string" ? e : JSON.stringify(e);
-        if (errStr.includes("MissingPhnColumn") || errStr.includes("PHN column")) {
-          setError("Could not auto-detect the PHN column. Use the column picker.");
+        if (errStr.includes("MissingPhnColumn") || errStr.includes("AmbiguousPhnColumns") || errStr.includes("PHN column")) {
+          setShowColumnPicker(true);
+          setError(null);
         } else {
           setError(errStr);
         }
       }
+    }
+  }, [emrPath, pasPath]);
+
+  const handleColumnPickerResolved = useCallback(async (emrCol: number, pasCol: number) => {
+    if (!emrPath || !pasPath) return;
+    setShowColumnPicker(false);
+    try {
+      const res = await reconcileWithColumnOverride(emrPath, pasPath, emrCol, pasCol);
+      setResult(res);
+      setResolved(new Set());
+      setActiveList("emr_no_match");
+    } catch (e: any) {
+      setError(typeof e === "string" ? e : JSON.stringify(e));
     }
   }, [emrPath, pasPath]);
 
@@ -115,7 +132,14 @@ export default function App() {
             onDismiss={() => setUpdate(null)}
           />
         )}
-        {result ? (
+        {showColumnPicker && emrPath && pasPath ? (
+          <ColumnPicker
+            emrPath={emrPath}
+            pasPath={pasPath}
+            onResolved={handleColumnPickerResolved}
+            onCancel={() => setShowColumnPicker(false)}
+          />
+        ) : result ? (
           <>
             <ListTabs
               active={activeList}

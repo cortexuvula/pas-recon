@@ -34,6 +34,10 @@ export async function checkForUpdates(): Promise<UpdateInfo | null> {
   return invoke<UpdateInfo | null>("check_for_updates");
 }
 
+export async function getCsvHeaders(path: string): Promise<string[]> {
+  return invoke<string[]>("get_csv_headers", { path });
+}
+
 export function onUpdateAvailable(callback: (info: UpdateInfo) => void) {
   return listen<UpdateInfo>("update-available", (event) => {
     callback(event.payload);

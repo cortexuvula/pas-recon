@@ -12,6 +12,7 @@ fn main() {
             commands::reconcile_with_column_override,
             commands::export_list,
             commands::check_for_updates,
+            commands::get_csv_headers,
         ])
         .setup(|app| {
             // Check for updates 3s after launch (non-blocking)
