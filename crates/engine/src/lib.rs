@@ -9,7 +9,21 @@ pub mod detect;
 pub mod model;
 pub mod parse;
 pub mod phn;
+pub mod reconcile;
 
-pub fn reconcile(_emr_csv: &[u8], _pas_csv: &[u8]) -> Result<model::ReconciliationResult, model::EngineError> {
-    todo!("implemented in Task 7")
+pub use model::{ReconciliationResult, EngineError};
+
+/// Run reconciliation with auto-detected columns.
+pub fn reconcile(emr_csv: &[u8], pas_csv: &[u8]) -> Result<ReconciliationResult, EngineError> {
+    reconcile::reconcile_with_columns(emr_csv, pas_csv, None, None)
+}
+
+/// Run reconciliation with caller-provided PHN column overrides.
+pub fn reconcile_with_columns(
+    emr_csv: &[u8],
+    pas_csv: &[u8],
+    emr_phn_column: Option<usize>,
+    pas_phn_column: Option<usize>,
+) -> Result<ReconciliationResult, EngineError> {
+    reconcile::reconcile_with_columns(emr_csv, pas_csv, emr_phn_column, pas_phn_column)
 }
