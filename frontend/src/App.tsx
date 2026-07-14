@@ -10,6 +10,7 @@ import {
   reconcileWithColumnOverride,
   exportList,
   onUpdateAvailable,
+  onDragDropEvent,
 } from "./api";
 import type { ReconciliationResult, UpdateInfo, ListKey } from "./types";
 
@@ -25,25 +26,41 @@ export default function App() {
   const [resolved, setResolved] = useState<Set<string>>(new Set());
   const [update, setUpdate] = useState<UpdateInfo | null>(null);
   const [showColumnPicker, setShowColumnPicker] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
 
   useEffect(() => {
     const unlisten = onUpdateAvailable((info) => setUpdate(info));
     return () => { unlisten.then((fn) => fn()); };
   }, []);
 
-  const handleFilesDropped = useCallback(async (files: File[]) => {
+  // Register Tauri-native drag-and-drop at the window level.
+  // Unlike HTML5 drag events, this provides real file paths from the OS.
+  useEffect(() => {
+    const unlisten = onDragDropEvent((event) => {
+      if (event.type === "enter" || event.type === "over") {
+        setIsDragging(true);
+      } else if (event.type === "leave") {
+        setIsDragging(false);
+      } else if (event.type === "drop") {
+        setIsDragging(false);
+        handlePathsDropped(event.paths);
+      }
+    });
+    return () => { unlisten.then((fn) => fn()); };
+  }, []);
+
+  const handlePathsDropped = useCallback(async (paths: string[]) => {
     setError(null);
     let newEmrPath = emrPath;
     let newPasPath = pasPath;
 
-    for (const file of files) {
-      const name = file.name.toLowerCase();
-      const filePath = (file as any).path || file.name;
+    for (const path of paths) {
+      const name = path.toLowerCase();
       if (name.includes("emr")) {
-        newEmrPath = filePath;
+        newEmrPath = path;
         setEmrLoaded(true);
       } else if (name.includes("pas")) {
-        newPasPath = filePath;
+        newPasPath = path;
         setPasLoaded(true);
       }
     }
@@ -113,12 +130,12 @@ export default function App() {
   return (
     <div className="app">
       <Sidebar
-        onFilesDropped={handleFilesDropped}
         emrLoaded={emrLoaded}
         pasLoaded={pasLoaded}
         error={error}
         summary={result?.summary ?? null}
         statusBreakdown={result?.summary.status_breakdown ?? null}
+        isDragging={isDragging}
       />
       <main className="main-panel">
         {update && (

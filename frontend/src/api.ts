@@ -1,5 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import { getCurrentWebview } from "@tauri-apps/api/webview";
+import type { UnlistenFn } from "@tauri-apps/api/event";
 import type { ReconciliationResult, UpdateInfo, DisplayRow, ListKey } from "./types";
 
 export async function reconcileFiles(emrPath: string, pasPath: string): Promise<ReconciliationResult> {
@@ -41,5 +43,25 @@ export async function getCsvHeaders(path: string): Promise<string[]> {
 export function onUpdateAvailable(callback: (info: UpdateInfo) => void) {
   return listen<UpdateInfo>("update-available", (event) => {
     callback(event.payload);
+  });
+}
+
+/**
+ * Register a callback for Tauri-native drag-and-drop events.
+ * Unlike HTML5 drag events, this provides real file paths from the OS.
+ * The callback receives the drop type and an array of file paths.
+ *
+ * Types: "enter" (drag entered window), "over" (dragging over),
+ *        "drop" (files dropped), "leave" (drag left window)
+ */
+export function onDragDropEvent(
+  callback: (event: { type: "enter" | "over" | "drop" | "leave"; paths: string[] }) => void,
+): Promise<UnlistenFn> {
+  return getCurrentWebview().onDragDropEvent((event) => {
+    const payload = event.payload;
+    callback({
+      type: payload.type,
+      paths: "paths" in payload ? payload.paths : [],
+    });
   });
 }

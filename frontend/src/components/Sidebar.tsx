@@ -4,16 +4,16 @@ import StatusBreakdown from "./StatusBreakdown";
 import type { Summary, StatusBreakdown as StatusBreakdownType } from "../types";
 
 interface SidebarProps {
-  onFilesDropped: (files: File[]) => void;
   emrLoaded: boolean;
   pasLoaded: boolean;
   error: string | null;
   summary: Summary | null;
   statusBreakdown: StatusBreakdownType | null;
+  isDragging: boolean;
 }
 
 export default function Sidebar({
-  onFilesDropped, emrLoaded, pasLoaded, error, summary, statusBreakdown
+  emrLoaded, pasLoaded, error, summary, statusBreakdown, isDragging
 }: SidebarProps) {
   return (
     <aside className="sidebar">
@@ -22,10 +22,10 @@ export default function Sidebar({
         <p className="version">v0.1.0</p>
       </div>
       <DropZone
-        onFilesDropped={onFilesDropped}
         emrLoaded={emrLoaded}
         pasLoaded={pasLoaded}
         error={error}
+        isDragging={isDragging}
       />
       {summary && <SummaryCard summary={summary} />}
       {statusBreakdown && <StatusBreakdown breakdown={statusBreakdown} />}
