@@ -116,3 +116,21 @@ pub struct ColumnMapping {
     pub mrp_status: Option<usize>,   // PAS only
     pub mrp_updated: Option<usize>,  // PAS only
 }
+
+/// A validated PAS record ready for dedup + matching.
+#[derive(Debug, Clone)]
+pub struct PasRecord {
+    pub phn: String,
+    pub mrp_status: Option<String>,
+    pub mrp_updated: Option<chrono::NaiveDate>,
+    pub raw_fields: Vec<String>,
+    pub row_index: usize,
+}
+
+/// A validated EMR record ready for matching.
+#[derive(Debug, Clone)]
+pub struct EmrRecord {
+    pub phn: String,
+    pub raw_fields: Vec<String>,
+    pub row_index: usize,
+}
