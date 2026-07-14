@@ -97,3 +97,10 @@ impl std::fmt::Display for CsvSource {
         }
     }
 }
+
+/// One parsed CSV row before column mapping. All fields are raw strings.
+#[derive(Debug, Clone)]
+pub struct RawRow {
+    pub fields: Vec<String>,
+    pub row_index: usize, // 0-based, excluding header
+}
