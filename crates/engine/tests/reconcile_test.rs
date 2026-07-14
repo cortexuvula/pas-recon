@@ -87,3 +87,53 @@ fn lists_sorted_by_last_name() {
     expected.sort();
     assert_eq!(last_names, expected, "List should be sorted by last name");
 }
+
+#[test]
+fn handles_dirty_emr_with_invalid_phns() {
+    let emr = read_fixture("emr_dirty.csv");
+    let pas = read_fixture("pas_basic.csv");
+
+    let result = reconcile(&emr, &pas).unwrap();
+
+    // emr_dirty.csv has:
+    // - 9876543210 (valid) → matched
+    // - 1234567890 (invalid: starts with 1) → skipped
+    // - "9876 543 210" with spaces (valid after normalize) → same as 9876543210
+    // - 9871111222 (valid) → matched
+    assert!(result.summary.invalid_phn_skipped >= 1, "Should skip invalid PHNs");
+}
+
+#[test]
+fn deduplicates_pas_by_latest_date() {
+    let emr = b"PHN,First,Last\n9876543210,John,Smith\n9871111222,Mary,Jones\n";
+    let pas = read_fixture("pas_duplicates.csv");
+
+    let result = reconcile(&emr[..], &pas).unwrap();
+
+    // pas_duplicates.csv has 3 rows for 9876543210 and 2 for 9871111222
+    // Dedup should drop 2 + 1 = 3 duplicates
+    assert_eq!(result.summary.duplicates_dropped, 3);
+    assert_eq!(result.summary.matched, 2);
+}
+
+#[test]
+fn empty_result_lists_when_all_match_and_confirmed() {
+    let csv = b"PHN,First,Last,MRP Status\n9876543210,John,Smith,Confirmed\n";
+    let result = reconcile(csv, csv).unwrap();
+
+    assert_eq!(result.summary.matched, 1);
+    assert_eq!(result.emr_no_match.len(), 0);
+    assert_eq!(result.pas_no_match.len(), 0);
+    assert_eq!(result.pas_match_review.len(), 0);
+}
+
+#[test]
+fn pas_without_status_column_produces_empty_review_list() {
+    let emr = b"PHN,Name\n9876543210,John\n";
+    let pas = b"PHN,Name\n9876543210,John\n";
+
+    let result = reconcile(&emr[..], &pas[..]).unwrap();
+
+    assert_eq!(result.summary.matched, 1);
+    assert_eq!(result.pas_match_review.len(), 0);
+}
