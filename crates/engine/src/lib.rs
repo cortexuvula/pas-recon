@@ -4,6 +4,7 @@
 //! by PHN, and returns three review lists plus a summary.
 
 pub mod date;
+pub mod detect;
 pub mod model;
 pub mod parse;
 pub mod phn;

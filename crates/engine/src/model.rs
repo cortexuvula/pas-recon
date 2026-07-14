@@ -104,3 +104,15 @@ pub struct RawRow {
     pub fields: Vec<String>,
     pub row_index: usize, // 0-based, excluding header
 }
+
+/// Which source column index maps to each recognized field.
+/// Only `phn` is required; others are `None` if not detected.
+#[derive(Debug, Clone)]
+pub struct ColumnMapping {
+    pub phn: usize,
+    pub first_name: Option<usize>,
+    pub last_name: Option<usize>,
+    pub dob: Option<usize>,
+    pub mrp_status: Option<usize>,   // PAS only
+    pub mrp_updated: Option<usize>,  // PAS only
+}
