@@ -77,5 +77,6 @@ jobs:
           APPLE_PASSWORD: ${{ secrets.APPLE_ID_PASSWORD }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
         with:
+          projectPath: crates/app
           releaseId: ${{ needs.create-release.outputs.release_upload_url }}
           args: ${{ matrix.args }}
