@@ -13,20 +13,28 @@ pub fn normalize_phn(raw: &str) -> String {
         .collect()
 }
 
-/// Verify the MOD 11 check digit for a 10-digit numeric string.
+/// Verify the MOD 11 check digit for a 10-digit BC PHN.
 ///
-/// The BC PHN uses a weighted MOD 11 scheme: digits 1–9 are multiplied
-/// by weights 2,1,6,3,5,4,8,7,2 (left to right), summed, and the check
-/// digit (position 10) must equal 11 - (sum % 11), or 0 if that's 11.
+/// Per BC Government TELEPLAN specification (section 1.14.2):
+/// - Weights for positions 1-9: [0, 2, 4, 8, 5, 10, 9, 7, 3]
+/// - Multiply each digit by its weight, sum the results
+/// - remainder = sum % 11
+/// - check digit = 11 - remainder
+/// - If remainder is 0, check digit is 11 (invalid — can't be single digit)
+/// - Example: PHN 9012372173 → weighted sum = 151, 151/11=13r8, 11-8=3 ✓
 fn verify_mod11(digits: &[u8; 10]) -> bool {
-    const WEIGHTS: [u32; 9] = [2, 1, 6, 3, 5, 4, 8, 7, 2];
+    const WEIGHTS: [u32; 9] = [0, 2, 4, 8, 5, 10, 9, 7, 3];
     let sum: u32 = digits[..9]
         .iter()
         .zip(WEIGHTS.iter())
         .map(|(&d, &w)| (d as u32) * w)
         .sum();
     let remainder = sum % 11;
-    let check = (11 - remainder) % 11; // 0 if remainder == 0
+    let check = 11 - remainder;
+    // If remainder is 0, check would be 11 (can't be a single digit → invalid PHN)
+    if check >= 10 {
+        return false;
+    }
     check as u8 == digits[9]
 }
 
@@ -92,12 +100,11 @@ mod tests {
 
     #[test]
     fn test_mod11_verification() {
-        // Construct a PHN with a known-valid check digit
-        // First 9 digits: 9 8 7 6 5 4 3 2 1
-        // Weighted sum: 18+8+42+18+25+16+24+14+2 = 167
-        // 167 % 11 = 2; check = (11-2) % 11 = 9
-        // So valid PHN: 9876543219
-        assert!(is_valid_bc_phn("9876543219"));
-        assert!(!is_valid_bc_phn("9876543218")); // wrong check digit
+        // Official BC TELEPLAN sample PHN (section 1.14.2)
+        // Weights: [0, 2, 4, 8, 5, 10, 9, 7, 3]
+        // 9*0 + 0*2 + 1*4 + 2*8 + 3*5 + 7*10 + 2*9 + 1*7 + 7*3 = 0+0+4+16+15+70+18+7+21 = 151
+        // 151 % 11 = 8; check = 11 - 8 = 3
+        assert!(is_valid_bc_phn("9012372173"));
+        assert!(!is_valid_bc_phn("9012372174")); // wrong check digit
     }
 }
