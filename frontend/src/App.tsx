@@ -68,6 +68,7 @@ export default function App() {
         const res = await reconcileFiles(newEmrPath, newPasPath);
         setResult(res);
         setResolved(new Set());
+        setSearchQuery("");
         setActiveList("emr_no_match");
       } catch (e: any) {
         const errStr = typeof e === "string" ? e : JSON.stringify(e);
@@ -129,10 +130,10 @@ export default function App() {
         filters: [{ name: "CSV", extensions: ["csv"] }],
       });
       if (path) {
-        await exportList(activeList, rows, path);
+        await exportList(rows, path);
       }
-    } catch {
-      // dialog plugin not available in dev — skip
+    } catch (e) {
+      setError(`Export failed: ${e}`);
     }
   }, [result, activeList]);
 

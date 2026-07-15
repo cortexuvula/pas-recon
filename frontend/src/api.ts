@@ -25,11 +25,8 @@ export async function reconcileWithColumnOverride(
   });
 }
 
-export async function exportList(list: ListKey, rows: DisplayRow[], path: string): Promise<void> {
-  const listKind = list === "emr_no_match" ? "EmrNoMatch"
-    : list === "pas_match_review" ? "PasMatchReview"
-    : "PasNoMatch";
-  await invoke("export_list", { list: listKind, rows, path });
+export async function exportList(rows: DisplayRow[], path: string): Promise<void> {
+  await invoke("export_list", { rows, path });
 }
 
 export async function checkForUpdates(): Promise<UpdateInfo | null> {
