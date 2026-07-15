@@ -73,12 +73,12 @@ mod tests {
     }
 
     #[test]
-    fn test_valid_bc_phn_with_valid_checksum() {
-        // 9876543210 — let's verify the check digit
-        // Digits: 9 8 7 6 5 4 3 2 1 | check=0
-        // Weights:2 1 6 3 5 4 8 7 2
-        // 18+8+42+18+25+16+24+14+2 = 167; 167%11=2; check=(11-2)%11=9 ≠ 0
-        assert!(!is_valid_bc_phn("9876543210")); // known test fixture, not a real PHN
+    fn test_known_fixture_not_a_real_phn() {
+        // 9876543210 is a test fixture, not a real BC PHN — it fails MOD-11.
+        // Weights: [0, 2, 4, 8, 5, 10, 9, 7, 3]
+        // 9*0+8*2+7*4+6*8+5*5+4*10+3*9+2*7+1*3 = 0+16+28+48+25+40+27+14+3 = 201
+        // 201 % 11 = 3; check = 11 - 3 = 8 ≠ 0 (the last digit)
+        assert!(!is_valid_bc_phn("9876543210"));
     }
 
     #[test]

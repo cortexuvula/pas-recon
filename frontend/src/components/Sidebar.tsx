@@ -21,7 +21,7 @@ export default function Sidebar({
     <aside className="sidebar">
       <div>
         <h1>PAS Reconciliation</h1>
-        <p className="version">v0.1.0</p>
+        <p className="version">v0.3.0</p>
       </div>
       <DropZone
         emrLoaded={emrLoaded}

@@ -202,6 +202,9 @@ fn detect_columns_with_phn_override(
 ) -> ColumnMapping {
     use crate::detect::{find_column, DOB_PATTERNS, FIRST_PATTERNS, LAST_PATTERNS, STATUS_PATTERNS, UPDATED_PATTERNS};
 
+    // Clamp phn_idx to valid range to prevent out-of-bounds access
+    let phn_idx = phn_idx.min(headers.len().saturating_sub(1));
+
     let (mrp_status, mrp_updated) = if is_pas {
         (
             find_column(headers, STATUS_PATTERNS),

@@ -62,8 +62,8 @@ export default function ColumnPicker({ emrPath, pasPath, onResolved, onCancel }:
         </div>
       </div>
       <div style={{ marginTop: "24px", display: "flex", gap: "8px", justifyContent: "flex-end" }}>
-        <button className="tab" onClick={onCancel}>Cancel</button>
-        <button className="export-btn" onClick={() => onResolved(emrCol, pasCol)}>Confirm</button>
+        <button type="button" className="tab" onClick={onCancel}>Cancel</button>
+        <button type="button" className="export-btn" onClick={() => onResolved(emrCol, pasCol)}>Confirm</button>
       </div>
     </div>
   );

@@ -43,8 +43,8 @@ export default function FileConfirm({
         </div>
       </div>
       <div style={{ display: "flex", gap: "8px", justifyContent: "flex-end" }}>
-        <button className="tab" onClick={onSwap}>Swap</button>
-        <button className="export-btn" onClick={onConfirm}>Confirm</button>
+        <button type="button" className="tab" onClick={onSwap}>Swap</button>
+        <button type="button" className="export-btn" onClick={onConfirm}>Confirm</button>
       </div>
     </div>
   );

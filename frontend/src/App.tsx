@@ -284,7 +284,7 @@ export default function App() {
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
               />
-              <button className="export-btn" onClick={handleExport}>Export CSV</button>
+              <button type="button" className="export-btn" onClick={handleExport}>Export CSV</button>
             </div>
             <PatientTable
               rows={currentRows}
