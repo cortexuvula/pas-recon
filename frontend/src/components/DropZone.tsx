@@ -1,11 +1,13 @@
 interface DropZoneProps {
   emrLoaded: boolean;
   pasLoaded: boolean;
+  emrFilename: string;
+  pasFilename: string;
   error: string | null;
   isDragging: boolean;
 }
 
-export default function DropZone({ emrLoaded, pasLoaded, error, isDragging }: DropZoneProps) {
+export default function DropZone({ emrLoaded, pasLoaded, emrFilename, pasFilename, error, isDragging }: DropZoneProps) {
   return (
     <div
       className="drop-zone"
@@ -14,10 +16,10 @@ export default function DropZone({ emrLoaded, pasLoaded, error, isDragging }: Dr
       <div className="drop-zone-label">Drop CSV Files Here</div>
       <div style={{ display: "flex", flexDirection: "column", gap: "4px", marginTop: "6px" }}>
         <div className="drop-zone-file">
-          {emrLoaded ? "✓" : "○"} EMR Active Patient List.csv
+          {emrLoaded ? "✓" : "○"} {emrFilename || "EMR file"}
         </div>
         <div className="drop-zone-file">
-          {pasLoaded ? "✓" : "○"} PAS Patient List.csv
+          {pasLoaded ? "✓" : "○"} {pasFilename || "PAS file"}
         </div>
       </div>
       {error && (

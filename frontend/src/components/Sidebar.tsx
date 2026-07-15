@@ -6,6 +6,8 @@ import type { Summary, StatusBreakdown as StatusBreakdownType } from "../types";
 interface SidebarProps {
   emrLoaded: boolean;
   pasLoaded: boolean;
+  emrFilename: string;
+  pasFilename: string;
   error: string | null;
   summary: Summary | null;
   statusBreakdown: StatusBreakdownType | null;
@@ -13,7 +15,7 @@ interface SidebarProps {
 }
 
 export default function Sidebar({
-  emrLoaded, pasLoaded, error, summary, statusBreakdown, isDragging
+  emrLoaded, pasLoaded, emrFilename, pasFilename, error, summary, statusBreakdown, isDragging
 }: SidebarProps) {
   return (
     <aside className="sidebar">
@@ -24,6 +26,8 @@ export default function Sidebar({
       <DropZone
         emrLoaded={emrLoaded}
         pasLoaded={pasLoaded}
+        emrFilename={emrFilename}
+        pasFilename={pasFilename}
         error={error}
         isDragging={isDragging}
       />

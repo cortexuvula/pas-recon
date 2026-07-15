@@ -226,6 +226,8 @@ export default function App() {
       <Sidebar
         emrLoaded={emrLoaded}
         pasLoaded={pasLoaded}
+        emrFilename={emrPath ? basename(emrPath) : ""}
+        pasFilename={pasPath ? basename(pasPath) : ""}
         error={error}
         summary={result?.summary ?? null}
         statusBreakdown={result?.summary.status_breakdown ?? null}
