@@ -138,7 +138,8 @@ export default function App() {
   }, [result, activeList]);
 
   const currentRows = result ? result[activeList] : [];
-  const showStatus = activeList !== "emr_no_match";
+  const showStatus = activeList === "pas_match_review" || activeList === "pas_no_match";
+  const showSource = activeList === "invalid_phns";
 
   return (
     <div className="app">
@@ -197,6 +198,7 @@ export default function App() {
             <PatientTable
               rows={currentRows}
               showStatus={showStatus}
+              showSource={showSource}
               resolvedSet={resolved}
               onToggleResolved={handleToggleResolved}
               searchQuery={searchQuery}

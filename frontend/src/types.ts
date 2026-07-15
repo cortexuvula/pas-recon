@@ -3,6 +3,7 @@ export interface ReconciliationResult {
   emr_no_match: DisplayRow[];
   pas_match_review: DisplayRow[];
   pas_no_match: DisplayRow[];
+  invalid_phns: DisplayRow[];
 }
 
 export interface Summary {
@@ -31,6 +32,7 @@ export interface DisplayRow {
   dob: string | null;
   mrp_status: string | null;
   raw_fields: string[];
+  source?: string | null;
 }
 
 export interface UpdateInfo {
@@ -38,4 +40,4 @@ export interface UpdateInfo {
   current_version: string;
 }
 
-export type ListKey = "emr_no_match" | "pas_match_review" | "pas_no_match";
+export type ListKey = "emr_no_match" | "pas_match_review" | "pas_no_match" | "invalid_phns";

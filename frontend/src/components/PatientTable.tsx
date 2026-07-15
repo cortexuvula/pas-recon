@@ -4,13 +4,14 @@ import type { DisplayRow } from "../types";
 interface PatientTableProps {
   rows: DisplayRow[];
   showStatus: boolean;
+  showSource: boolean;
   resolvedSet: Set<string>;
   onToggleResolved: (phn: string) => void;
   searchQuery: string;
 }
 
 export default function PatientTable({
-  rows, showStatus, resolvedSet, onToggleResolved, searchQuery
+  rows, showStatus, showSource, resolvedSet, onToggleResolved, searchQuery
 }: PatientTableProps) {
   const filtered = useMemo(() => {
     if (!searchQuery.trim()) return rows;
@@ -18,7 +19,8 @@ export default function PatientTable({
     return rows.filter((r) =>
       r.phn.toLowerCase().includes(q) ||
       (r.first_name?.toLowerCase().includes(q) ?? false) ||
-      (r.last_name?.toLowerCase().includes(q) ?? false)
+      (r.last_name?.toLowerCase().includes(q) ?? false) ||
+      (r.source?.toLowerCase().includes(q) ?? false)
     );
   }, [rows, searchQuery]);
 
@@ -35,6 +37,7 @@ export default function PatientTable({
       <table>
         <thead>
           <tr>
+            {showSource && <th>Source</th>}
             <th>PHN</th>
             <th>First Name</th>
             <th>Last Name</th>
@@ -43,13 +46,18 @@ export default function PatientTable({
           </tr>
         </thead>
         <tbody>
-          {filtered.map((row) => (
+          {filtered.map((row, i) => (
             <tr
-              key={row.phn}
+              key={`${row.phn}-${i}`}
               className={resolvedSet.has(row.phn) ? "resolved" : ""}
               onClick={() => onToggleResolved(row.phn)}
               style={{ cursor: "pointer" }}
             >
+              {showSource && (
+                <td style={{ fontWeight: 600, color: row.source === "EMR" ? "var(--amber)" : "var(--blue)" }}>
+                  {row.source ?? "—"}
+                </td>
+              )}
               <td className="phn">{row.phn}</td>
               <td>{row.first_name ?? "—"}</td>
               <td>{row.last_name ?? "—"}</td>

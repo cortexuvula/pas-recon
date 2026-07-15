@@ -10,12 +10,14 @@ const TAB_CONFIG: { key: ListKey; label: string; countKey: keyof Summary }[] = [
   { key: "emr_no_match", label: "EMR No Match", countKey: "emr_only" },
   { key: "pas_match_review", label: "PAS Match - Review", countKey: "pas_review" },
   { key: "pas_no_match", label: "PAS No Match", countKey: "pas_only" },
+  { key: "invalid_phns", label: "Invalid PHNs", countKey: "invalid_phn_skipped" },
 ];
 
 const CONTEXT_LINES: Record<ListKey, string> = {
   emr_no_match: "Patients in your EMR panel but not found in PAS. These may need a 98990 bill submitted, or have incorrect status/MRP in the EMR.",
   pas_match_review: "Matched patients with a status of Pending, Not the MRP, Deceased, or Removed. These may need updating in your EMR.",
   pas_no_match: "Patients in PAS but not in your EMR panel. These may have left the clinic, or the EMR status/MRP is incorrect.",
+  invalid_phns: "Rows with PHNs that failed BC PHN validation (10 digits starting with 9, valid MOD-11 check digit). Check for typos or data entry errors.",
 };
 
 export { CONTEXT_LINES };

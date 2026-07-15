@@ -14,23 +14,49 @@ use crate::{
 /// Which status values put a matched PAS patient on the "review" list.
 const REVIEW_STATUSES: &[&str] = &["pending", "not the mrp", "deceased", "removed"];
 
+/// Build a DisplayRow from a raw CSV row that failed PHN validation.
+/// Shows the raw (invalid) PHN and any detected name/date fields for context.
+fn raw_row_to_display(
+    row: &crate::model::RawRow,
+    mapping: &ColumnMapping,
+    raw_phn: &str,
+    source: &str,
+) -> DisplayRow {
+    let get = |idx: Option<usize>| -> Option<String> {
+        idx.and_then(|i| row.fields.get(i))
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+    };
+
+    DisplayRow {
+        phn: raw_phn.trim().to_string(),
+        first_name: get(mapping.first_name),
+        last_name: get(mapping.last_name),
+        dob: get(mapping.dob),
+        mrp_status: get(mapping.mrp_status),
+        raw_fields: row.fields.clone(),
+        source: Some(source.to_string()),
+    }
+}
+
 /// Parse and validate EMR records from a parsed CSV using a column mapping.
+/// Returns (valid_records, invalid_rows_as_display_rows).
 fn build_emr_records(
     parsed: &crate::parse::ParsedCsv,
     mapping: &ColumnMapping,
-) -> (Vec<EmrRecord>, usize) {
+) -> (Vec<EmrRecord>, Vec<DisplayRow>) {
     let mut records = Vec::new();
-    let mut invalid = 0usize;
+    let mut invalid_rows = Vec::new();
 
     for row in &parsed.rows {
         let raw_phn = row.fields.get(mapping.phn).map(|s| s.as_str()).unwrap_or("");
-        let normalized = phn::normalize_phn(raw_phn);
 
         if !phn::is_valid_bc_phn(raw_phn) {
-            invalid += 1;
+            invalid_rows.push(raw_row_to_display(row, mapping, raw_phn, "EMR"));
             continue;
         }
 
+        let normalized = phn::normalize_phn(raw_phn);
         records.push(EmrRecord {
             phn: normalized,
             raw_fields: row.fields.clone(),
@@ -38,23 +64,24 @@ fn build_emr_records(
         });
     }
 
-    (records, invalid)
+    (records, invalid_rows)
 }
 
 /// Parse and validate PAS records from a parsed CSV using a column mapping.
+/// Returns (valid_records, invalid_rows_as_display_rows, unparseable_date_count).
 fn build_pas_records(
     parsed: &crate::parse::ParsedCsv,
     mapping: &ColumnMapping,
-) -> (Vec<PasRecord>, usize, usize) {
+) -> (Vec<PasRecord>, Vec<DisplayRow>, usize) {
     let mut records = Vec::new();
-    let mut invalid = 0usize;
+    let mut invalid_rows = Vec::new();
     let mut bad_dates = 0usize;
 
     for row in &parsed.rows {
         let raw_phn = row.fields.get(mapping.phn).map(|s| s.as_str()).unwrap_or("");
 
         if !phn::is_valid_bc_phn(raw_phn) {
-            invalid += 1;
+            invalid_rows.push(raw_row_to_display(row, mapping, raw_phn, "PAS"));
             continue;
         }
 
@@ -94,7 +121,7 @@ fn build_pas_records(
         });
     }
 
-    (records, invalid, bad_dates)
+    (records, invalid_rows, bad_dates)
 }
 
 /// Build a DisplayRow from an EMR record + column mapping.
@@ -112,6 +139,7 @@ fn emr_to_display(record: &EmrRecord, mapping: &ColumnMapping) -> DisplayRow {
         dob: get(mapping.dob),
         mrp_status: None,
         raw_fields: record.raw_fields.clone(),
+        source: None,
     }
 }
 
@@ -130,6 +158,7 @@ fn pas_to_display(record: &PasRecord, mapping: &ColumnMapping) -> DisplayRow {
         dob: get(mapping.dob),
         mrp_status: record.mrp_status.clone(),
         raw_fields: record.raw_fields.clone(),
+        source: None,
     }
 }
 
@@ -223,8 +252,12 @@ pub fn reconcile_with_columns(
     };
 
     // --- Build records + validate PHNs ---
-    let (emr_records, emr_invalid) = build_emr_records(&emr_parsed, &emr_mapping);
-    let (pas_records, pas_invalid, bad_dates) = build_pas_records(&pas_parsed, &pas_mapping);
+    let (emr_records, emr_invalid_rows) = build_emr_records(&emr_parsed, &emr_mapping);
+    let (pas_records, pas_invalid_rows, bad_dates) = build_pas_records(&pas_parsed, &pas_mapping);
+
+    // Combine invalid rows from both sources
+    let mut invalid_phns = emr_invalid_rows;
+    invalid_phns.extend(pas_invalid_rows);
 
     // --- Dedup PAS ---
     let (pas_records, duplicates_dropped) = deduplicate_pas(pas_records);
@@ -293,6 +326,7 @@ pub fn reconcile_with_columns(
     emr_no_match.sort_by(sort_fn);
     pas_match_review.sort_by(sort_fn);
     pas_no_match.sort_by(sort_fn);
+    invalid_phns.sort_by(sort_fn);
 
     let summary = Summary {
         matched,
@@ -301,7 +335,7 @@ pub fn reconcile_with_columns(
         pas_review: pas_match_review.len(),
         status_breakdown,
         duplicates_dropped,
-        invalid_phn_skipped: emr_invalid + pas_invalid,
+        invalid_phn_skipped: invalid_phns.len(),
         unparseable_dates: bad_dates,
     };
 
@@ -310,5 +344,6 @@ pub fn reconcile_with_columns(
         emr_no_match,
         pas_match_review,
         pas_no_match,
+        invalid_phns,
     })
 }

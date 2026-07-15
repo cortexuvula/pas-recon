@@ -25,7 +25,7 @@ export default function SummaryCard({ summary }: SummaryCardProps) {
         <strong>{summary.pas_review}</strong>
       </div>
       {(summary.duplicates_dropped > 0 || summary.invalid_phn_skipped > 0) && (
-        <div style={{ marginTop: "6px", fontSize: "8px", color: "var(--text-faint)" }}>
+        <div style={{ marginTop: "8px", fontSize: "12px", color: "var(--red)", fontWeight: 600 }}>
           ⚠ {summary.duplicates_dropped} duplicates dropped, {summary.invalid_phn_skipped} invalid PHNs skipped
         </div>
       )}

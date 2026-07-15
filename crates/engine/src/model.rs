@@ -7,6 +7,7 @@ pub struct ReconciliationResult {
     pub emr_no_match: Vec<DisplayRow>,
     pub pas_match_review: Vec<DisplayRow>,
     pub pas_no_match: Vec<DisplayRow>,
+    pub invalid_phns: Vec<DisplayRow>,
 }
 
 /// Aggregate counts shown in the sidebar.
@@ -40,6 +41,10 @@ pub struct DisplayRow {
     pub dob: Option<String>,
     pub mrp_status: Option<String>,
     pub raw_fields: Vec<String>,
+    /// Which file this row came from ("EMR" or "PAS"). Only set for
+    /// invalid_phns where provenance isn't obvious from the list name.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source: Option<String>,
 }
 
 /// Errors that abort a reconciliation run.
