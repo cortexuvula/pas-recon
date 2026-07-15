@@ -153,10 +153,19 @@ export default function App() {
         {update && (
           <UpdateToast
             info={update}
-            onDownload={() => {
-              import("@tauri-apps/plugin-updater").then(({ check }) => {
-                check().then((u) => u?.downloadAndInstall());
-              });
+            onDownload={async () => {
+              try {
+                const { check } = await import("@tauri-apps/plugin-updater");
+                const updateObj = await check();
+                if (updateObj) {
+                  await updateObj.downloadAndInstall();
+                  // Restart the app to apply the update
+                  const { relaunch } = await import("@tauri-apps/plugin-process");
+                  await relaunch();
+                }
+              } catch (e) {
+                setError(`Update failed: ${e}`);
+              }
             }}
             onDismiss={() => setUpdate(null)}
           />
