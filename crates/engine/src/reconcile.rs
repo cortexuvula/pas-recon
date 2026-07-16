@@ -11,8 +11,22 @@ use crate::{
     phn,
 };
 
+/// Deduplicate EMR records by PHN, keeping first seen.
+/// EMR exports have no date column for tiebreaking, unlike PAS.
+fn dedup_emr(records: Vec<EmrRecord>) -> Vec<EmrRecord> {
+    let mut seen = HashSet::new();
+    records.into_iter().filter(|r| seen.insert(r.phn.clone())).collect()
+}
+
 /// Which status values put a matched PAS patient on the "review" list.
 const REVIEW_STATUSES: &[&str] = &["pending", "not the mrp", "deceased", "removed"];
+
+/// Extract a trimmed, non-empty field from a row by optional column index.
+fn field(fields: &[String], idx: Option<usize>) -> Option<String> {
+    idx.and_then(|i| fields.get(i))
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+}
 
 /// Build a DisplayRow from a raw CSV row that failed PHN validation.
 /// Shows the raw (invalid) PHN and any detected name/date fields for context.
@@ -22,18 +36,12 @@ fn raw_row_to_display(
     raw_phn: &str,
     source: &str,
 ) -> DisplayRow {
-    let get = |idx: Option<usize>| -> Option<String> {
-        idx.and_then(|i| row.fields.get(i))
-            .map(|s| s.trim().to_string())
-            .filter(|s| !s.is_empty())
-    };
-
     DisplayRow {
         phn: raw_phn.trim().to_string(),
-        first_name: get(mapping.first_name),
-        last_name: get(mapping.last_name),
-        dob: get(mapping.dob),
-        mrp_status: get(mapping.mrp_status),
+        first_name: field(&row.fields, mapping.first_name),
+        last_name: field(&row.fields, mapping.last_name),
+        dob: field(&row.fields, mapping.dob),
+        mrp_status: field(&row.fields, mapping.mrp_status),
         raw_fields: row.fields.clone(),
         source: Some(source.to_string()),
     }
@@ -126,17 +134,11 @@ fn build_pas_records(
 
 /// Build a DisplayRow from an EMR record + column mapping.
 fn emr_to_display(record: &EmrRecord, mapping: &ColumnMapping) -> DisplayRow {
-    let get = |idx: Option<usize>| -> Option<String> {
-        idx.and_then(|i| record.raw_fields.get(i))
-            .map(|s| s.trim().to_string())
-            .filter(|s| !s.is_empty())
-    };
-
     DisplayRow {
         phn: record.phn.clone(),
-        first_name: get(mapping.first_name),
-        last_name: get(mapping.last_name),
-        dob: get(mapping.dob),
+        first_name: field(&record.raw_fields, mapping.first_name),
+        last_name: field(&record.raw_fields, mapping.last_name),
+        dob: field(&record.raw_fields, mapping.dob),
         mrp_status: None,
         raw_fields: record.raw_fields.clone(),
         source: None,
@@ -145,17 +147,11 @@ fn emr_to_display(record: &EmrRecord, mapping: &ColumnMapping) -> DisplayRow {
 
 /// Build a DisplayRow from a PAS record + column mapping.
 fn pas_to_display(record: &PasRecord, mapping: &ColumnMapping) -> DisplayRow {
-    let get = |idx: Option<usize>| -> Option<String> {
-        idx.and_then(|i| record.raw_fields.get(i))
-            .map(|s| s.trim().to_string())
-            .filter(|s| !s.is_empty())
-    };
-
     DisplayRow {
         phn: record.phn.clone(),
-        first_name: get(mapping.first_name),
-        last_name: get(mapping.last_name),
-        dob: get(mapping.dob),
+        first_name: field(&record.raw_fields, mapping.first_name),
+        last_name: field(&record.raw_fields, mapping.last_name),
+        dob: field(&record.raw_fields, mapping.dob),
         mrp_status: record.mrp_status.clone(),
         raw_fields: record.raw_fields.clone(),
         source: None,
@@ -261,6 +257,9 @@ pub fn reconcile_with_columns(
     // Combine invalid rows from both sources
     let mut invalid_phns = emr_invalid_rows;
     invalid_phns.extend(pas_invalid_rows);
+
+    // --- Dedup EMR (keep first seen — no date column to compare) ---
+    let emr_records = dedup_emr(emr_records);
 
     // --- Dedup PAS ---
     let (pas_records, duplicates_dropped) = deduplicate_pas(pas_records);

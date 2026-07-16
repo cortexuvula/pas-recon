@@ -46,11 +46,18 @@ export default function PatientTable({
           </tr>
         </thead>
         <tbody>
-          {filtered.map((row, i) => (
+          {filtered.map((row, i) => {
+            const isResolved = resolvedSet.has(row.phn);
+            return (
             <tr
               key={`${row.phn}-${i}`}
-              className={resolvedSet.has(row.phn) ? "resolved" : ""}
+              className={isResolved ? "resolved" : ""}
+              tabIndex={0}
+              role="switch"
+              aria-checked={isResolved}
+              aria-label={`${row.phn} ${row.first_name ?? ""} ${row.last_name ?? ""}`}
               onClick={() => onToggleResolved(row.phn)}
+              onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onToggleResolved(row.phn); } }}
               style={{ cursor: "pointer" }}
             >
               {showSource && (
@@ -64,7 +71,8 @@ export default function PatientTable({
               <td>{row.dob ?? "—"}</td>
               {showStatus && <td>{row.mrp_status ?? "—"}</td>}
             </tr>
-          ))}
+            );
+          })}
         </tbody>
       </table>
     </div>

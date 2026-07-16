@@ -181,10 +181,12 @@ export default function App() {
   const handleColumnPickerResolved = useCallback(async (emrCol: number, pasCol: number) => {
     if (!emrPath || !pasPath) return;
     setShowColumnPicker(false);
+    setError(null);
     try {
       const res = await reconcileWithColumnOverride(emrPath, pasPath, emrCol, pasCol);
       setResult(res);
       setResolved(new Set());
+      setSearchQuery("");
       setActiveList("emr_no_match");
     } catch (e: any) {
       setError(typeof e === "string" ? e : JSON.stringify(e));

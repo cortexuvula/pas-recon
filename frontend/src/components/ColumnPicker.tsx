@@ -14,6 +14,7 @@ export default function ColumnPicker({ emrPath, pasPath, onResolved, onCancel }:
   const [emrCol, setEmrCol] = useState(0);
   const [pasCol, setPasCol] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     Promise.all([getCsvHeaders(emrPath), getCsvHeaders(pasPath)])
@@ -22,10 +23,20 @@ export default function ColumnPicker({ emrPath, pasPath, onResolved, onCancel }:
         setPasHeaders(pas);
         setLoading(false);
       })
-      .catch(() => setLoading(false));
+      .catch((e) => {
+        setError(`Failed to read file headers: ${e}`);
+        setLoading(false);
+      });
   }, [emrPath, pasPath]);
 
   if (loading) return <div className="empty-state">Loading headers…</div>;
+
+  if (error) return (
+    <div style={{ padding: "24px" }}>
+      <div className="error-banner">{error}</div>
+      <button type="button" className="tab" onClick={onCancel}>Back</button>
+    </div>
+  );
 
   return (
     <div style={{ padding: "24px", maxWidth: "600px", margin: "0 auto" }}>

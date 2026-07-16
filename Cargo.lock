@@ -2239,7 +2239,6 @@ version = "0.1.0"
 dependencies = [
  "chrono",
  "csv",
- "regex",
  "serde",
  "thiserror 1.0.69",
 ]
