@@ -250,7 +250,13 @@ export default function App() {
                   await relaunch();
                 }
               } catch (e) {
-                setError(`Update failed: ${e}`);
+                const errMsg = String(e);
+                if (errMsg.includes("invalid updater binary format")) {
+                  setError("Auto-update is not supported for this Linux installation (.deb/.rpm). Please download the latest version manually from: https://github.com/cortexuvula/pas-recon/releases/latest");
+                  setUpdate(null);
+                } else {
+                  setError(`Update failed: ${e}`);
+                }
               }
             }}
             onDismiss={() => setUpdate(null)}
