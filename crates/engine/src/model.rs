@@ -33,7 +33,7 @@ pub struct StatusBreakdown {
 }
 
 /// One row in an output list.
-#[derive(Debug, Clone, serde::Serialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct DisplayRow {
     pub phn: String,
     pub first_name: Option<String>,

@@ -6,6 +6,9 @@ import UpdateToast from "./components/UpdateToast";
 import EmptyState from "./components/EmptyState";
 import ColumnPicker from "./components/ColumnPicker";
 import FileConfirm from "./components/FileConfirm";
+import { save } from "@tauri-apps/plugin-dialog";
+import { check as checkForUpdate } from "@tauri-apps/plugin-updater";
+import { relaunch } from "@tauri-apps/plugin-process";
 import {
   reconcileFiles,
   reconcileWithColumnOverride,
@@ -206,7 +209,6 @@ export default function App() {
     if (!result) return;
     const rows = result[activeList];
     try {
-      const { save } = await import("@tauri-apps/plugin-dialog");
       const path = await save({
         defaultPath: `${activeList}.csv`,
         filters: [{ name: "CSV", extensions: ["csv"] }],
@@ -241,12 +243,9 @@ export default function App() {
             info={update}
             onDownload={async () => {
               try {
-                const { check } = await import("@tauri-apps/plugin-updater");
-                const updateObj = await check();
+                const updateObj = await checkForUpdate();
                 if (updateObj) {
                   await updateObj.downloadAndInstall();
-                  // Restart the app to apply the update
-                  const { relaunch } = await import("@tauri-apps/plugin-process");
                   await relaunch();
                 }
               } catch (e) {

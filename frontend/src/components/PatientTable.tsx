@@ -109,7 +109,7 @@ export default function PatientTable({
             const isResolved = resolvedSet.has(row.phn);
             return (
             <tr
-              key={`${row.phn}-${i}`}
+              key={`${row.phn}-${row.last_name ?? ""}-${i}`}
               className={isResolved ? "resolved" : ""}
               tabIndex={0}
               role="switch"

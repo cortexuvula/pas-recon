@@ -6,22 +6,8 @@
 
 use pas_recon_engine::{
     self,
-    model::{ReconciliationResult, EngineError},
+    model::{ReconciliationResult, DisplayRow, EngineError},
 };
-
-/// One row received from the frontend for CSV export.
-///
-/// `pas_recon_engine::model::DisplayRow` only derives `Serialize` (it is an
-/// output type), but Tauri commands must `Deserialize` their arguments. We
-/// accept a local deserializable mirror here and write it to CSV.
-#[derive(Debug, Clone, serde::Deserialize)]
-pub struct ExportRow {
-    pub phn: String,
-    pub first_name: Option<String>,
-    pub last_name: Option<String>,
-    pub dob: Option<String>,
-    pub mrp_status: Option<String>,
-}
 
 /// Read two CSV files from disk and run reconciliation.
 /// Auto-detects the PHN column in each. Offloaded to a blocking thread.
@@ -86,7 +72,7 @@ pub async fn reconcile_with_column_override(
 /// Offloaded to a blocking thread.
 #[tauri::command]
 pub async fn export_list(
-    rows: Vec<ExportRow>,
+    rows: Vec<DisplayRow>,
     path: String,
 ) -> Result<(), String> {
     tauri::async_runtime::spawn_blocking(move || {

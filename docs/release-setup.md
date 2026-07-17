@@ -47,9 +47,12 @@ For silent auto-update (no OS prompts), you need:
 |--------|-------------|
 | `APPLE_CERTIFICATE` | Base64-encoded .p12 certificate |
 | `APPLE_CERTIFICATE_PASSWORD` | Password for the .p12 |
-| `APPLE_SIGNING_IDENTITY` | Developer ID Application signer identity |
-| `APPLE_ID` | Apple ID for notarization |
-| `APPLE_PASSWORD` | App-specific password for notarization |
+| `APPLE_API_ISSUER` | App Store Connect API Issuer ID (UUID) |
+| `APPLE_API_KEY` | App Store Connect API Key ID |
+| `APPLE_API_KEY_CONTENT` | Full contents of the downloaded .p8 file |
+| `APPLE_TEAM_ID` | Short team code (e.g. ABC123XYZ) |
+
+Note: The app uses App Store Connect API key authentication for notarization, not the deprecated app-specific password method.
 
 ### Windows
 | Secret | Description |
@@ -62,11 +65,10 @@ will show "unidentified developer" warnings. Acceptable for initial release.
 ## 5. Create the GitHub repo and push
 
 ```bash
-gh repo create pas-recon --private --source=. --push
+gh repo create pas-recon --source=. --push
 ```
 
-Then update `crates/app/tauri.conf.json`:
-- Replace the owner in `endpoints` URL (`pas-recon/pas-recon` placeholder)
+The `endpoints` URL in `crates/app/tauri.conf.json` is already configured with the correct owner (`cortexuvula/pas-recon`).
   with your actual GitHub username/org.
 
 ## 6. Create the first release
