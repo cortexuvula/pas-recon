@@ -25,3 +25,4 @@ crates/app/.updater-key
 .vscode/
 *.swp
 *.swo
+.wrangler/
