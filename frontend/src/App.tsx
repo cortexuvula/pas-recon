@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import Sidebar from "./components/Sidebar";
 import ListTabs from "./components/ListTabs";
 import PatientTable from "./components/PatientTable";
@@ -31,6 +31,7 @@ export default function App() {
   const [resolved, setResolved] = useState<Set<string>>(new Set());
   const [update, setUpdate] = useState<UpdateInfo | null>(null);
   const [showColumnPicker, setShowColumnPicker] = useState(false);
+  const [exportStatusFilter, setExportStatusFilter] = useState("all");
   const [isDragging, setIsDragging] = useState(false);
   const [showFileConfirm, setShowFileConfirm] = useState(false);
   const [pendingEmrPath, setPendingEmrPath] = useState<string | null>(null);
@@ -205,12 +206,32 @@ export default function App() {
     });
   }, []);
 
+  const currentRows = result ? result[activeList] : [];
+  const showStatus = activeList === "pas_match_review" || activeList === "pas_no_match";
+  const showSource = activeList === "invalid_phns";
+
+  // Compute distinct statuses for the export filter dropdown
+  const distinctStatuses = useMemo(() => {
+    if (!result || !showStatus) return [];
+    const rows = result[activeList];
+    const statuses = new Set<string>();
+    for (const r of rows) {
+      if (r.mrp_status) statuses.add(r.mrp_status);
+    }
+    return Array.from(statuses).sort();
+  }, [result, activeList, showStatus]);
+
   const handleExport = useCallback(async () => {
     if (!result) return;
-    const rows = result[activeList];
+    let rows = result[activeList];
+    // Filter by selected status if not "all"
+    if (exportStatusFilter !== "all") {
+      rows = rows.filter(r => r.mrp_status === exportStatusFilter);
+    }
     try {
+      const suffix = exportStatusFilter !== "all" ? `-${exportStatusFilter.replace(/\s+/g, "-").toLowerCase()}` : "";
       const path = await save({
-        defaultPath: `${activeList}.csv`,
+        defaultPath: `${activeList}${suffix}.csv`,
         filters: [{ name: "CSV", extensions: ["csv"] }],
       });
       if (path) {
@@ -219,11 +240,7 @@ export default function App() {
     } catch (e) {
       setError(`Export failed: ${e}`);
     }
-  }, [result, activeList]);
-
-  const currentRows = result ? result[activeList] : [];
-  const showStatus = activeList === "pas_match_review" || activeList === "pas_no_match";
-  const showSource = activeList === "invalid_phns";
+  }, [result, activeList, exportStatusFilter]);
 
   return (
     <div className="app">
@@ -291,6 +308,20 @@ export default function App() {
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
               />
+              {showStatus && distinctStatuses.length > 0 && (
+                <select
+                  className="search-input"
+                  style={{ width: "auto", minWidth: "120px" }}
+                  value={exportStatusFilter}
+                  onChange={(e) => setExportStatusFilter(e.target.value)}
+                  title="Filter export by status"
+                >
+                  <option value="all">All statuses</option>
+                  {distinctStatuses.map(s => (
+                    <option key={s} value={s}>{s}</option>
+                  ))}
+                </select>
+              )}
               <button type="button" className="export-btn" onClick={handleExport}>Export CSV</button>
             </div>
             <PatientTable
