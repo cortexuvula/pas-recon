@@ -19,32 +19,30 @@ import {
 } from "./api";
 import type { ReconciliationResult, UpdateInfo, ListKey } from "./types";
 
-/** Translate internal error strings to human-readable messages. */
+/** Convert an unknown error value to a user-friendly string. */
 function humanizeError(e: unknown): string {
-  const raw = typeof e === "string" ? e : JSON.stringify(e);
-  if (raw.includes("MissingPhnColumn") || raw.includes("PHN column")) {
-    const source = raw.includes("EMR") ? "EMR" : raw.includes("PAS") ? "PAS" : "";
-    return `Could not find the PHN column${source ? ` in the ${source} file` : ""}. Please select it manually using the column picker.`;
+  const raw = typeof e === "string" ? e : String(e);
+  // Engine Display messages already arrive as readable strings (e.g.,
+  // "could not find a PHN column in PAS CSV"). Enhance the most common ones.
+  if (raw.includes("could not find a PHN column")) {
+    return raw + " Please select it manually using the column picker.";
   }
-  if (raw.includes("AmbiguousPhnColumns")) {
-    return "Multiple columns look like PHNs. Please select the correct one using the column picker.";
+  if (raw.includes("multiple columns") && raw.includes("PHN")) {
+    return raw + " Please select the correct one using the column picker.";
   }
-  if (raw.includes("empty") || raw.includes("no data")) {
+  if (raw.includes("file is empty") || raw.includes("no data rows")) {
     return "One of the files is empty or has no data rows. Please check your files.";
   }
-  if (raw.includes("CSV parse error") || raw.includes("CsvParse")) {
+  if (raw.includes("CSV parse error") || raw.includes("CSV read error")) {
     return "Could not parse one of the files. Please make sure both files are valid CSV files.";
   }
-  if (raw.includes("Failed to read") || raw.includes("No such file")) {
+  if (raw.includes("failed to read") || raw.includes("No such file")) {
     return "Could not read one of the files. The file may have been moved or deleted.";
-  }
-  if (raw.includes("Export failed") || raw.includes("Failed to write")) {
-    return "Could not export the file. It may be open in another program. Please close it and try again.";
   }
   if (raw.includes("invalid updater binary format")) {
     return "Auto-update is not supported for this Linux installation. Please download the latest version from the releases page.";
   }
-  if (raw.length > 150) {
+  if (raw === "[object Object]") {
     return "An unexpected error occurred. Please try again.";
   }
   return raw;
@@ -124,7 +122,8 @@ export default function App() {
       setActiveList("emr_no_match");
     } catch (e: any) {
       const errStr = typeof e === "string" ? e : JSON.stringify(e);
-      if (errStr.includes("MissingPhnColumn") || errStr.includes("AmbiguousPhnColumns") || errStr.includes("PHN column")) {
+      if (errStr.includes("PHN column") || errStr.includes("MissingPhnColumn") || errStr.includes("AmbiguousPhnColumns")) {
+        setResult(null);  // clear stale results from a previous reconciliation
         setShowColumnPicker(true);
         setError(null);
       } else {

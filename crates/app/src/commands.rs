@@ -15,7 +15,7 @@ use pas_recon_engine::{
 pub async fn reconcile_files(
     emr_path: String,
     pas_path: String,
-) -> Result<ReconciliationResult, EngineError> {
+) -> Result<ReconciliationResult, String> {
     tauri::async_runtime::spawn_blocking(move || {
         let emr_bytes = std::fs::read(&emr_path).map_err(|e| EngineError::Io {
             source: "EMR".to_string(),
@@ -29,10 +29,8 @@ pub async fn reconcile_files(
         pas_recon_engine::reconcile(&emr_bytes, &pas_bytes)
     })
     .await
-    .map_err(|e| EngineError::Io {
-        source: "Internal".to_string(),
-        message: format!("background task failed: {e}"),
-    })?
+    .map_err(|e| format!("Internal error: background task failed: {e}"))?
+    .map_err(|e| e.to_string())
 }
 
 /// Reconcile with user-provided PHN column overrides (manual picker fallback).
@@ -43,7 +41,7 @@ pub async fn reconcile_with_column_override(
     pas_path: String,
     emr_phn_column: Option<usize>,
     pas_phn_column: Option<usize>,
-) -> Result<ReconciliationResult, EngineError> {
+) -> Result<ReconciliationResult, String> {
     tauri::async_runtime::spawn_blocking(move || {
         let emr_bytes = std::fs::read(&emr_path).map_err(|e| EngineError::Io {
             source: "EMR".to_string(),
@@ -62,10 +60,8 @@ pub async fn reconcile_with_column_override(
         )
     })
     .await
-    .map_err(|e| EngineError::Io {
-        source: "Internal".to_string(),
-        message: format!("background task failed: {e}"),
-    })?
+    .map_err(|e| format!("Internal error: background task failed: {e}"))?
+    .map_err(|e| e.to_string())
 }
 
 /// Export the list to a CSV or PDF file at the given path.
@@ -112,20 +108,7 @@ fn export_csv(rows: &[DisplayRow], path: &str) -> Result<(), String> {
 /// and uses "Print to PDF" — this avoids bundling font files for a Rust PDF
 /// library and works cross-platform with the system's native print dialog.
 fn export_html(rows: &[DisplayRow], path: &str, title: &str) -> Result<(), String> {
-    let date = {
-        use std::time::{SystemTime, UNIX_EPOCH};
-        let secs = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map(|d| d.as_secs())
-            .unwrap_or(0);
-        // Simple date formatting from epoch seconds (YYYY-MM-DD approximation)
-        let days = secs / 86400;
-        let year = 1970 + (days / 365);
-        let day_of_year = days % 365;
-        let month = ((day_of_year / 30) as u8).max(1).min(12);
-        let day = ((day_of_year % 30) as u8).max(1);
-        format!("{year}-{month:02}-{day:02}")
-    };
+    let date = chrono::Local::now().format("%Y-%m-%d").to_string();
 
     let mut body = String::with_capacity(8192 + rows.len() * 200);
     body.push_str(&format!(
@@ -176,13 +159,19 @@ tr:nth-child(even) td {{ background: #f9fafb; }}
 
     std::fs::write(path, body).map_err(|e| format!("Failed to write file: {e}"))?;
 
-    // Open the file in the default browser using the OS's native command
+    // Open the file in the default browser using the OS's native command.
+    // If this fails, inform the user but still report success (file was written).
     #[cfg(target_os = "macos")]
-    let _ = std::process::Command::new("open").arg(path).spawn();
+    let open_result = std::process::Command::new("open").arg(path).spawn();
     #[cfg(target_os = "windows")]
-    let _ = std::process::Command::new("cmd").args(["/C", "start", "", path]).spawn();
+    let open_result = std::process::Command::new("cmd").args(["/C", "start", "", path]).spawn();
     #[cfg(target_os = "linux")]
-    let _ = std::process::Command::new("xdg-open").arg(path).spawn();
+    let open_result = std::process::Command::new("xdg-open").arg(path).spawn();
+
+    #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
+    if open_result.is_err() {
+        return Ok(()); // File was written successfully; browser open is best-effort
+    }
 
     Ok(())
 }

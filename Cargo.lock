@@ -2484,8 +2484,9 @@ dependencies = [
 
 [[package]]
 name = "pas-recon-app"
-version = "0.4.1"
+version = "0.5.0"
 dependencies = [
+ "chrono",
  "csv",
  "pas-recon-engine",
  "serde",
@@ -2501,7 +2502,7 @@ dependencies = [
 
 [[package]]
 name = "pas-recon-engine"
-version = "0.4.1"
+version = "0.5.0"
 dependencies = [
  "chrono",
  "csv",
