@@ -8,14 +8,13 @@ interface SidebarProps {
   pasLoaded: boolean;
   emrFilename: string;
   pasFilename: string;
-  error: string | null;
   summary: Summary | null;
   statusBreakdown: StatusBreakdownType | null;
   isDragging: boolean;
 }
 
 export default function Sidebar({
-  emrLoaded, pasLoaded, emrFilename, pasFilename, error, summary, statusBreakdown, isDragging
+  emrLoaded, pasLoaded, emrFilename, pasFilename, summary, statusBreakdown, isDragging
 }: SidebarProps) {
   return (
     <aside className="sidebar">
@@ -28,7 +27,6 @@ export default function Sidebar({
         pasLoaded={pasLoaded}
         emrFilename={emrFilename}
         pasFilename={pasFilename}
-        error={error}
         isDragging={isDragging}
       />
       {summary && <SummaryCard summary={summary} />}

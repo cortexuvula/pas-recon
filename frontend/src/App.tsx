@@ -19,6 +19,37 @@ import {
 } from "./api";
 import type { ReconciliationResult, UpdateInfo, ListKey } from "./types";
 
+/** Translate internal error strings to human-readable messages. */
+function humanizeError(e: unknown): string {
+  const raw = typeof e === "string" ? e : JSON.stringify(e);
+  if (raw.includes("MissingPhnColumn") || raw.includes("PHN column")) {
+    const source = raw.includes("EMR") ? "EMR" : raw.includes("PAS") ? "PAS" : "";
+    return `Could not find the PHN column${source ? ` in the ${source} file` : ""}. Please select it manually using the column picker.`;
+  }
+  if (raw.includes("AmbiguousPhnColumns")) {
+    return "Multiple columns look like PHNs. Please select the correct one using the column picker.";
+  }
+  if (raw.includes("empty") || raw.includes("no data")) {
+    return "One of the files is empty or has no data rows. Please check your files.";
+  }
+  if (raw.includes("CSV parse error") || raw.includes("CsvParse")) {
+    return "Could not parse one of the files. Please make sure both files are valid CSV files.";
+  }
+  if (raw.includes("Failed to read") || raw.includes("No such file")) {
+    return "Could not read one of the files. The file may have been moved or deleted.";
+  }
+  if (raw.includes("Export failed") || raw.includes("Failed to write")) {
+    return "Could not export the file. It may be open in another program. Please close it and try again.";
+  }
+  if (raw.includes("invalid updater binary format")) {
+    return "Auto-update is not supported for this Linux installation. Please download the latest version from the releases page.";
+  }
+  if (raw.length > 150) {
+    return "An unexpected error occurred. Please try again.";
+  }
+  return raw;
+}
+
 export default function App() {
   const [result, setResult] = useState<ReconciliationResult | null>(null);
   const [emrLoaded, setEmrLoaded] = useState(false);
@@ -97,7 +128,7 @@ export default function App() {
         setShowColumnPicker(true);
         setError(null);
       } else {
-        setError(errStr);
+        setError(humanizeError(errStr));
       }
     }
   }, []);
@@ -140,7 +171,7 @@ export default function App() {
         setShowFileConfirm(true);
       }
     } catch (e: any) {
-      setError(`Failed to read files: ${e}`);
+      setError(humanizeError(`Failed to read files: ${e}`));
     }
   }, [runReconciliation]);
 
@@ -193,7 +224,7 @@ export default function App() {
       setSearchQuery("");
       setActiveList("emr_no_match");
     } catch (e: any) {
-      setError(typeof e === "string" ? e : JSON.stringify(e));
+      setError(humanizeError(e));
     }
   }, [emrPath, pasPath]);
 
@@ -221,7 +252,7 @@ export default function App() {
     return Array.from(statuses).sort();
   }, [result, activeList, showStatus]);
 
-  const handleExport = useCallback(async () => {
+  const handleExportWithFormat = useCallback(async (format: "csv" | "pdf") => {
     if (!result) return;
     let rows = result[activeList];
     // Filter by selected status if not "all"
@@ -230,15 +261,24 @@ export default function App() {
     }
     try {
       const suffix = exportStatusFilter !== "all" ? `-${exportStatusFilter.replace(/\s+/g, "-").toLowerCase()}` : "";
-      const path = await save({
-        defaultPath: `${activeList}${suffix}.csv`,
-        filters: [{ name: "CSV", extensions: ["csv"] }],
+      const ext = format === "pdf" ? "html" : "csv";
+      const selected = await save({
+        defaultPath: `${activeList}${suffix}.${ext}`,
+        filters: [{ name: format === "pdf" ? "HTML (Print to PDF)" : "CSV", extensions: [ext] }],
       });
-      if (path) {
-        await exportList(rows, path);
+      if (selected) {
+        // Build a human-readable title for the PDF header
+        const tabLabel = activeList === "emr_no_match" ? "EMR No Match"
+          : activeList === "pas_match_review" ? "PAS Match - Review"
+          : activeList === "pas_no_match" ? "PAS No Match"
+          : activeList === "invalid_phns" ? "Invalid PHNs"
+          : activeList;
+        const statusLabel = exportStatusFilter !== "all" ? ` (${exportStatusFilter})` : "";
+        const title = `PAS Reconciliation — ${tabLabel}${statusLabel}`;
+        await exportList(rows, selected, format, title);
       }
     } catch (e) {
-      setError(`Export failed: ${e}`);
+      setError(humanizeError(`Export failed: ${e}`));
     }
   }, [result, activeList, exportStatusFilter]);
 
@@ -249,12 +289,19 @@ export default function App() {
         pasLoaded={pasLoaded}
         emrFilename={emrPath ? basename(emrPath) : ""}
         pasFilename={pasPath ? basename(pasPath) : ""}
-        error={error}
         summary={result?.summary ?? null}
         statusBreakdown={result?.summary.status_breakdown ?? null}
         isDragging={isDragging}
       />
       <main className="main-panel">
+        {error && (
+          <div className="error-main">
+            <span>{error}</span>
+            <button type="button" className="error-dismiss" onClick={() => setError(null)} aria-label="Dismiss error">
+              {"\u00D7"}
+            </button>
+          </div>
+        )}
         {update && (
           <UpdateToast
             info={update}
@@ -271,7 +318,7 @@ export default function App() {
                   setError("Auto-update is not supported for this Linux installation (.deb/.rpm). Please download the latest version manually from: https://github.com/cortexuvula/pas-recon/releases/latest");
                   setUpdate(null);
                 } else {
-                  setError(`Update failed: ${e}`);
+                  setError(humanizeError(`Update failed: ${e}`));
                 }
               }
             }}
@@ -322,7 +369,9 @@ export default function App() {
                   ))}
                 </select>
               )}
-              <button type="button" className="export-btn" onClick={handleExport}>Export CSV</button>
+              <button type="button" className="export-btn" onClick={() => handleExportWithFormat("csv")}>Export CSV</button>
+              <button type="button" className="export-btn" onClick={() => handleExportWithFormat("pdf")} style={{ background: "var(--red)" }}>Export PDF</button>
+              <span style={{ fontSize: "11px", color: "var(--text-faint)", marginLeft: "4px" }}>(opens in browser)</span>
             </div>
             <PatientTable
               rows={currentRows}

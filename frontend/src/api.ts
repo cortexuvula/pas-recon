@@ -25,8 +25,8 @@ export async function reconcileWithColumnOverride(
   });
 }
 
-export async function exportList(rows: DisplayRow[], path: string): Promise<void> {
-  await invoke("export_list", { rows, path });
+export async function exportList(rows: DisplayRow[], path: string, format: string, title: string): Promise<void> {
+  await invoke("export_list", { rows, path, format, title });
 }
 
 export async function checkForUpdates(): Promise<UpdateInfo | null> {
