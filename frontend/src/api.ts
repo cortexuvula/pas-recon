@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
+import { open } from "@tauri-apps/plugin-dialog";
 import type { UnlistenFn } from "@tauri-apps/api/event";
 import type { ReconciliationResult, UpdateInfo, DisplayRow, ListKey } from "./types";
 
@@ -27,6 +28,16 @@ export async function reconcileWithColumnOverride(
 
 export async function exportList(rows: DisplayRow[], path: string, format: string, title: string): Promise<void> {
   await invoke("export_list", { rows, path, format, title });
+}
+
+/** Open a native file picker and return the selected file path, or null if cancelled. */
+export async function browseForFile(title: string): Promise<string | null> {
+  const selected = await open({
+    title,
+    multiple: false,
+    filters: [{ name: "CSV Files", extensions: ["csv"] }],
+  });
+  return typeof selected === "string" ? selected : null;
 }
 
 export async function checkForUpdates(): Promise<UpdateInfo | null> {

@@ -99,6 +99,22 @@ body {
   color: var(--text-dim);
 }
 
+.browse-btn {
+  background: var(--blue);
+  color: white;
+  border: none;
+  font-size: 11px;
+  padding: 4px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.browse-btn:hover {
+  background: #2563eb;
+}
+
 .summary-section, .status-section {
   font-size: 13px;
 }

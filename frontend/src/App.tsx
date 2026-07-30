@@ -14,6 +14,7 @@ import {
   reconcileWithColumnOverride,
   exportList,
   getCsvHeaders,
+  browseForFile,
   onUpdateAvailable,
   onDragDropEvent,
 } from "./api";
@@ -135,44 +136,90 @@ export default function App() {
   const handlePathsDropped = useCallback(async (paths: string[]) => {
     setError(null);
 
-    if (paths.length < 2) {
-      setError("Please drop both CSV files (EMR panel and PAS patient list).");
-      return;
-    }
+    if (paths.length === 0) return;
 
-    // Take the first two files
-    const [path1, path2] = paths;
+    if (paths.length === 1) {
+      // Single file — classify it and ask for the next
+      await ingestSingleFile(paths[0]);
+    } else {
+      // Two or more files — classify both and reconcile
+      const [path1, path2] = paths;
+      try {
+        const [headers1, headers2] = await Promise.all([
+          getCsvHeaders(path1),
+          getCsvHeaders(path2),
+        ]);
 
-    try {
-      const [headers1, headers2] = await Promise.all([
-        getCsvHeaders(path1),
-        getCsvHeaders(path2),
-      ]);
+        const classified = classifyFiles(headers1, headers2, path1, path2);
 
-      const classified = classifyFiles(headers1, headers2, path1, path2);
-
-      if (classified) {
-        const [emrPath, pasPath] = classified;
-        setEmrPath(emrPath);
-        setPasPath(pasPath);
-        setEmrLoaded(true);
-        setPasLoaded(true);
-        await runReconciliation(emrPath, pasPath);
-      } else {
-        // Ambiguous — store paths and show confirmation dialog.
-        // Default guess: path1 = EMR, path2 = PAS (user can swap).
-        setPendingEmrPath(path1);
-        setPendingPasPath(path2);
-        setPendingEmrFilename(basename(path1));
-        setPendingPasFilename(basename(path2));
-        setPendingEmrHeaders(headers1);
-        setPendingPasHeaders(headers2);
-        setShowFileConfirm(true);
+        if (classified) {
+          const [emrP, pasP] = classified;
+          setEmrPath(emrP);
+          setPasPath(pasP);
+          setEmrLoaded(true);
+          setPasLoaded(true);
+          await runReconciliation(emrP, pasP);
+        } else {
+          setPendingEmrPath(path1);
+          setPendingPasPath(path2);
+          setPendingEmrFilename(basename(path1));
+          setPendingPasFilename(basename(path2));
+          setPendingEmrHeaders(headers1);
+          setPendingPasHeaders(headers2);
+          setShowFileConfirm(true);
+        }
+      } catch (e: any) {
+        setError(humanizeError(`Failed to read files: ${e}`));
       }
-    } catch (e: any) {
-      setError(humanizeError(`Failed to read files: ${e}`));
     }
   }, [runReconciliation]);
+
+  /** Ingest a single file — auto-classify as EMR or PAS by headers.
+   *  If the other file is already loaded, run reconciliation. */
+  const ingestSingleFile = useCallback(async (path: string) => {
+    setError(null);
+    try {
+      const headers = await getCsvHeaders(path);
+      const hasPasSignal = (hs: string[]) =>
+        hs.some(h => {
+          const lower = h.toLowerCase();
+          return lower.includes("pas mrp status") || lower.includes("pas mrp updated");
+        });
+
+      const isPas = hasPasSignal(headers);
+      const name = basename(path);
+
+      if (isPas) {
+        // This is the PAS file
+        setPasPath(path);
+        setPasLoaded(true);
+        if (emrPath) {
+          await runReconciliation(emrPath, path);
+        }
+      } else {
+        // Assume EMR (unless it has no PAS signal and PAS isn't loaded yet,
+        // in which case it could be either — but we default to EMR)
+        setEmrPath(path);
+        setEmrLoaded(true);
+        if (pasPath) {
+          await runReconciliation(path, pasPath);
+        }
+      }
+    } catch (e: any) {
+      setError(humanizeError(`Failed to read file: ${e}`));
+    }
+  }, [emrPath, pasPath, runReconciliation]);
+
+  /** Browse for a file using the native file picker. */
+  const handleBrowse = useCallback(async (which: "emr" | "pas") => {
+    const title = which === "emr"
+      ? "Select your EMR Active Patient List CSV"
+      : "Select your PAS Patient List CSV";
+    const path = await browseForFile(title);
+    if (path) {
+      await ingestSingleFile(path);
+    }
+  }, [ingestSingleFile]);
 
   const handleFileConfirm = useCallback(async () => {
     setShowFileConfirm(false);
@@ -291,6 +338,8 @@ export default function App() {
         summary={result?.summary ?? null}
         statusBreakdown={result?.summary.status_breakdown ?? null}
         isDragging={isDragging}
+        onBrowseEmr={() => handleBrowse("emr")}
+        onBrowsePas={() => handleBrowse("pas")}
       />
       <main className="main-panel">
         {error && (
