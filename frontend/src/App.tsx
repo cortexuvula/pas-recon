@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import Sidebar from "./components/Sidebar";
 import ListTabs from "./components/ListTabs";
 import PatientTable from "./components/PatientTable";
@@ -175,7 +175,13 @@ export default function App() {
   }, [runReconciliation]);
 
   /** Ingest a single file — auto-classify as EMR or PAS by headers.
-   *  If the other file is already loaded, run reconciliation. */
+   *  If the other file is already loaded, run reconciliation.
+   *  Uses refs to read current paths (avoids stale closure in event listener). */
+  const emrPathRef = useRef<string | null>(null);
+  const pasPathRef = useRef<string | null>(null);
+  useEffect(() => { emrPathRef.current = emrPath; }, [emrPath]);
+  useEffect(() => { pasPathRef.current = pasPath; }, [pasPath]);
+
   const ingestSingleFile = useCallback(async (path: string) => {
     setError(null);
     try {
@@ -187,28 +193,28 @@ export default function App() {
         });
 
       const isPas = hasPasSignal(headers);
-      const name = basename(path);
 
       if (isPas) {
         // This is the PAS file
         setPasPath(path);
         setPasLoaded(true);
-        if (emrPath) {
-          await runReconciliation(emrPath, path);
+        const currentEmr = emrPathRef.current;
+        if (currentEmr) {
+          await runReconciliation(currentEmr, path);
         }
       } else {
-        // Assume EMR (unless it has no PAS signal and PAS isn't loaded yet,
-        // in which case it could be either — but we default to EMR)
+        // Assume EMR
         setEmrPath(path);
         setEmrLoaded(true);
-        if (pasPath) {
-          await runReconciliation(path, pasPath);
+        const currentPas = pasPathRef.current;
+        if (currentPas) {
+          await runReconciliation(path, currentPas);
         }
       }
     } catch (e: any) {
       setError(humanizeError(`Failed to read file: ${e}`));
     }
-  }, [emrPath, pasPath, runReconciliation]);
+  }, [runReconciliation]);
 
   /** Browse for a file using the native file picker. */
   const handleBrowse = useCallback(async (which: "emr" | "pas") => {
