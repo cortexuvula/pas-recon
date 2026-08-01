@@ -1,4 +1,4 @@
-use pas_recon_engine::reconcile;
+use pas_recon_engine::{reconcile, reconcile_with_columns};
 
 fn read_fixture(name: &str) -> Vec<u8> {
     // Tests may run from the package dir (crates/engine) or the workspace root.
@@ -136,4 +136,99 @@ fn pas_without_status_column_produces_empty_review_list() {
 
     assert_eq!(result.summary.matched, 1);
     assert_eq!(result.pas_match_review.len(), 0);
+}
+
+// --- C1: Manual PHN column override ---
+
+#[test]
+fn manual_phn_column_override_drives_matching() {
+    // EMR has PHN in column index 1, header is "Patient ID" (won't auto-detect).
+    // PAS has PHN in column index 2, header is "Health Num".
+    let emr = b"Note,Patient ID,Name\nx,9876543218,John\n";
+    let pas = b"Flag,Note,Health Num,Status\nx,y,9876543218,Confirmed\n";
+
+    // Auto-detection must fail on the EMR side.
+    let auto = reconcile(emr, pas);
+    assert!(auto.is_err(), "auto-detect should fail without a PHN header");
+
+    // Override: EMR PHN = col 1, PAS PHN = col 2.
+    let result = reconcile_with_columns(emr, pas, Some(1), Some(2)).unwrap();
+    assert_eq!(result.summary.matched, 1);
+    assert_eq!(result.summary.emr_only, 0);
+    assert_eq!(result.summary.pas_only, 0);
+    assert_eq!(result.summary.invalid_phn_skipped, 0);
+}
+
+#[test]
+fn manual_phn_override_clamps_out_of_range_index() {
+    let emr = b"PHN,Name\n9876543218,John\n";
+    let pas = b"PHN,Status\n9876543218,Confirmed\n";
+    // phn_idx = 99 clamps to last column ("Name"), which fails PHN validation.
+    let result = reconcile_with_columns(emr, pas, Some(99), Some(0)).unwrap();
+    assert!(result.summary.invalid_phn_skipped >= 1,
+        "out-of-range override should clamp and produce invalid rows");
+}
+
+// --- C2: Matched review-worthy statuses ---
+
+#[test]
+fn matched_deceased_removed_and_not_the_mrp_appear_in_review() {
+    fn run_with_status(status: &str) -> pas_recon_engine::model::ReconciliationResult {
+        let emr = b"PHN,First,Last\n9876543218,John,Smith\n";
+        let pas_csv = format!(
+            "PHN,First,Last,MRP Status\n9876543218,John,Smith,{}\n",
+            status
+        );
+        reconcile(emr, pas_csv.as_bytes()).unwrap()
+    }
+
+    for review_status in &["Deceased", "Removed", "Not the MRP", "Pending"] {
+        let r = run_with_status(review_status);
+        assert_eq!(r.summary.matched, 1, "status={}", review_status);
+        assert_eq!(r.pas_match_review.len(), 1,
+            "status {} should put the matched patient on the review list", review_status);
+        assert_eq!(r.pas_match_review[0].phn, "9876543218");
+    }
+
+    // Confirmed must NOT appear on the review list.
+    let confirmed = run_with_status("Confirmed");
+    assert_eq!(confirmed.summary.matched, 1);
+    assert_eq!(confirmed.pas_match_review.len(), 0);
+}
+
+// --- C3: Dedup keeps newest status, even if it changes review outcome ---
+
+#[test]
+fn dedup_keeps_newest_status_even_when_it_changes_review_outcome() {
+    // Same PHN twice in PAS: older is Deceased (review), newer is Confirmed.
+    // After dedup the patient should be Confirmed — matched, NOT on review list.
+    let emr = b"PHN,First,Last\n9876543218,John,Smith\n";
+    let pas = b"PHN,First,Last,MRP Status,MRP Updated\n\
+9876543218,John,Smith,Deceased,01/01/2023\n\
+9876543218,John,Smith,Confirmed,01/06/2024\n";
+
+    let result = reconcile(&emr[..], &pas[..]).unwrap();
+    assert_eq!(result.summary.duplicates_dropped, 1);
+    assert_eq!(result.summary.matched, 1);
+    assert_eq!(result.pas_match_review.len(), 0,
+        "newest (Confirmed) should win — patient should NOT be up for review");
+    assert_eq!(result.summary.status_breakdown.confirmed, 1);
+    assert_eq!(result.summary.status_breakdown.deceased, 0,
+        "status breakdown reflects the KEPT (deduped) record only");
+}
+
+// --- C5: Case-insensitive status classification ---
+
+#[test]
+fn status_classification_is_case_insensitive() {
+    let emr = b"PHN,First,Last\n9876543218,John,Smith\n";
+    let pas = b"PHN,First,Last,MRP Status\n\
+9876543218,John,Smith,PENDING\n";
+
+    let result = reconcile(&emr[..], &pas[..]).unwrap();
+    assert_eq!(result.summary.matched, 1);
+    assert_eq!(result.pas_match_review.len(), 1,
+        "uppercase PENDING must still land on the review list");
+    assert_eq!(result.summary.status_breakdown.pending, 1,
+        "uppercase PENDING must still tally as pending");
 }
