@@ -378,8 +378,11 @@ def main(argv=None):
         "tag": args.tag,
         "date": _dt.datetime.now(_dt.timezone.utc).strftime("%Y-%m-%d %H:%M"),
     }
-    pathlib.Path(args.report).write_text(build_report_md(results, meta))
-    _sys.stderr.write(f"wrote {args.report}\n")
+    try:
+        pathlib.Path(args.report).write_text(build_report_md(results, meta))
+        _sys.stderr.write(f"wrote {args.report}\n")
+    except Exception as e:
+        _sys.stderr.write(f"could not write report {args.report}: {e}\n")
 
     if args.dry_run:
         existing = ""
@@ -392,8 +395,11 @@ def main(argv=None):
             existing = ""
 
     section = build_notes_section(args.report_asset, results)
-    pathlib.Path(args.notes_file).write_text(append_notes_section(existing, section))
-    _sys.stderr.write(f"wrote {args.notes_file}\n")
+    try:
+        pathlib.Path(args.notes_file).write_text(append_notes_section(existing, section))
+        _sys.stderr.write(f"wrote {args.notes_file}\n")
+    except Exception as e:
+        _sys.stderr.write(f"could not write notes {args.notes_file}: {e}\n")
     return 0
 
 

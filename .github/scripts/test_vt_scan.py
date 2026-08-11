@@ -266,5 +266,21 @@ class TestDryRun(unittest.TestCase):
             self.assertIn("`app.dmg`", n)
 
 
+class TestMainResilience(unittest.TestCase):
+    def test_main_returns_zero_when_report_path_unwritable(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as d:
+            td = pathlib.Path(d)
+            (td / "app.dmg").write_bytes(b"x")
+            rc = vt_scan.main([
+                "--assets-dir", str(td),
+                "--tag", "v9.9.9",
+                "--report", str(td / "no_such_subdir" / "REPORT.md"),
+                "--notes-file", str(td / "no_such_subdir" / "NOTES.md"),
+                "--dry-run",
+            ])
+            self.assertEqual(rc, 0)
+
+
 if __name__ == "__main__":
     unittest.main()
