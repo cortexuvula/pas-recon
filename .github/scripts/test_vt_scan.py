@@ -192,5 +192,32 @@ class TestNotes(unittest.TestCase):
         self.assertNotIn("first", out2)
 
 
+from vt_scan import RateLimiter, compute_backoff
+
+
+class TestRateLimit(unittest.TestCase):
+    def test_backoff_grows_and_caps(self):
+        self.assertEqual(compute_backoff(0), 1)
+        self.assertEqual(compute_backoff(1), 2)
+        self.assertEqual(compute_backoff(2), 4)
+        self.assertEqual(compute_backoff(10), 60)
+
+    def test_rate_limiter_enforces_min_interval(self):
+        sleeps = []
+        times = [100.0]
+
+        def fake_monotonic():
+            return times[0]
+
+        rl = RateLimiter(min_interval=16.0, sleep=sleeps.append, monotonic=fake_monotonic)
+        rl.wait()
+        self.assertEqual(sleeps, [])
+        rl.wait()
+        self.assertEqual(sleeps, [16.0])
+        times[0] = 110.0
+        rl.wait()
+        self.assertEqual(sleeps[-1], 6.0)
+
+
 if __name__ == "__main__":
     unittest.main()

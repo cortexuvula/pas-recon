@@ -177,3 +177,25 @@ def append_notes_section(existing_body, section):
     parts = (existing_body or "").split("\n" + NOTES_HEADER)
     base = parts[0].rstrip()
     return f"{base}\n\n{section}\n"
+
+
+# ---- rate limiting ------------------------------------------------------
+def compute_backoff(attempt):
+    """Exponential backoff seconds for retry `attempt` (0-indexed), capped at 60s."""
+    return min(2 ** attempt, 60)
+
+
+class RateLimiter:
+    def __init__(self, min_interval, sleep=None, monotonic=None):
+        import time
+        self.min_interval = min_interval
+        self._sleep = sleep if sleep is not None else time.sleep
+        self._monotonic = monotonic if monotonic is not None else time.monotonic
+        self._last = float("-inf")
+
+    def wait(self):
+        elapsed = self._monotonic() - self._last
+        delta = self.min_interval - elapsed
+        if delta > 0:
+            self._sleep(delta)
+        self._last = self._monotonic()
