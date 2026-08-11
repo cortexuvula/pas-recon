@@ -807,15 +807,15 @@ class TestDryRun(unittest.TestCase):
                 "--notes-file", str(notes),
                 "--dry-run",
             ])
-        self.assertEqual(rc, 0)
-        r = report.read_text()
-        self.assertIn("`v9.9.9`", r)
-        self.assertIn("app.dmg", r)
-        self.assertIn("app.exe", r)
-        self.assertNotIn("latest.json", r)
-        n = notes.read_text()
-        self.assertIn("## VirusTotal Scan", n)
-        self.assertIn("`app.dmg`", n)
+            self.assertEqual(rc, 0)
+            r = report.read_text()
+            self.assertIn("`v9.9.9`", r)
+            self.assertIn("app.dmg", r)
+            self.assertIn("app.exe", r)
+            self.assertNotIn("latest.json", r)
+            n = notes.read_text()
+            self.assertIn("## VirusTotal Scan", n)
+            self.assertIn("`app.dmg`", n)
 ```
 
 - [ ] **Step 2: Run tests, verify they fail**
