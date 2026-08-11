@@ -383,6 +383,22 @@ class TestMainInvariants(unittest.TestCase):
             self.assertIn("skipped", report.read_text())  # report still written
             self.assertFalse(notes.exists())   # notes NOT written (body fetch failed)
 
+    def test_notes_write_failure_removes_partial_file(self):
+        with tempfile.TemporaryDirectory() as d:
+            td = pathlib.Path(d)
+            (td / "app.dmg").write_bytes(b"hi")
+            report = td / "R.md"
+            notes = td / "N.md"
+            notes.write_text("PARTIAL-GARBAGE")  # simulates a prior partial write
+            with mock.patch("vt_scan.append_notes_section", side_effect=RuntimeError("boom")):
+                rc = vt_scan.main([
+                    "--assets-dir", str(td), "--tag", "v0",
+                    "--report", str(report), "--notes-file", str(notes),
+                    "--dry-run",
+                ])
+            self.assertEqual(rc, 0)
+            self.assertFalse(notes.exists(), "partial notes file must be removed on write failure")
+
 
 if __name__ == "__main__":
     unittest.main()

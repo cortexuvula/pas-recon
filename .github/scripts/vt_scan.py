@@ -366,7 +366,6 @@ def _run(args):
     import datetime as _dt
     import os as _os
     import pathlib
-    import random as _random
     import sys as _sys
 
     try:
@@ -427,6 +426,10 @@ def _run(args):
             _sys.stderr.write(f"wrote {args.notes_file}\n")
         except Exception as e:
             _sys.stderr.write(f"could not write notes {args.notes_file}: {e}\n")
+            try:
+                pathlib.Path(args.notes_file).unlink(missing_ok=True)
+            except OSError:
+                pass
 
     return 0
 
