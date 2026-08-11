@@ -115,7 +115,11 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release upload "${{ github.ref_name }}" VIRUSTOTAL-REPORT.md --clobber
+          if [ -f VIRUSTOTAL-REPORT.md ]; then
+            gh release upload "${{ github.ref_name }}" VIRUSTOTAL-REPORT.md --clobber
+          else
+            echo "VIRUSTOTAL-REPORT.md not produced; skipping report upload"
+          fi
           # Only rewrite the release body if the script produced notes; otherwise
           # leave the existing changelog untouched (defense-in-depth).
           if [ -f release-notes.md ]; then
