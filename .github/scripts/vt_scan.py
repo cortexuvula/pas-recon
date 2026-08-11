@@ -261,3 +261,142 @@ def vt_http(method, path, api_key, *, body=None, multipart=None, limiter):
                 continue
             raise RuntimeError(last_err)
     raise RuntimeError(last_err or "http failed")
+
+
+# ---- orchestration ------------------------------------------------------
+POLL_ATTEMPTS = 8
+POLL_DELAY = 30.0
+MIN_INTERVAL = 16.0
+
+
+def scan_one(path, api_key, limiter):
+    """Scan a single file: hash-first lookup, then upload+poll if needed."""
+    name = path.name
+    try:
+        size = path.stat().st_size
+        sha = sha256_of(path)
+    except OSError as e:
+        return VtResult(name, "", 0, "error", detail=str(e))
+
+    permalink = f"https://www.virustotal.com/gui/file/{sha}"
+
+    # 1. hash-first lookup (cheap, instant)
+    try:
+        payload = vt_http("GET", f"/files/{sha}", api_key, limiter=limiter)
+        hit = parse_hash_lookup(payload)
+        if hit is not None:
+            hit.name = name
+            hit.size = size  # show local size for display
+            return hit
+    except _urlerr.HTTPError as e:
+        if e.code != 404:
+            return VtResult(name, sha, size, "error",
+                            detail=f"lookup HTTP {e.code}", permalink=permalink)
+    except RuntimeError as e:
+        return VtResult(name, sha, size, "error", detail=str(e), permalink=permalink)
+
+    # 2. not known -> upload if within free-tier size cap
+    if not should_upload(size):
+        return VtResult(name, sha, size, "oversized",
+                        detail=">32 MB; free-tier upload not attempted",
+                        permalink=permalink)
+
+    try:
+        content = path.read_bytes()
+        up = vt_http("POST", "/files", api_key, multipart=(name, content), limiter=limiter)
+        analysis_id = ((up.get("data") or {}).get("id") or "")
+        if not analysis_id:
+            return VtResult(name, sha, size, "error", detail="no analysis id",
+                            permalink=permalink)
+    except (RuntimeError, _urlerr.HTTPError) as e:
+        return VtResult(name, sha, size, "error", detail=str(e), permalink=permalink)
+
+    # 3. poll analysis
+    import time as _time
+    for _ in range(POLL_ATTEMPTS):
+        _time.sleep(POLL_DELAY)
+        try:
+            p = vt_http("GET", f"/analyses/{analysis_id}", api_key, limiter=limiter)
+        except (RuntimeError, _urlerr.HTTPError) as e:
+            return VtResult(name, sha, size, "error", detail=str(e), permalink=permalink)
+        state, stats = parse_analysis(p)
+        if state == "completed" and stats is not None:
+            mal, total = stats
+            return VtResult(name, sha, size,
+                            "detection" if mal else "clean",
+                            malicious=mal, total=total, permalink=permalink)
+
+    return VtResult(name, sha, size, "queued",
+                    detail="analysis still running; see permalink", permalink=permalink)
+
+
+def gh(args):
+    """Run a gh CLI command; return stdout. Raises on non-zero exit."""
+    import subprocess
+    res = subprocess.run(["gh", *args], check=True, capture_output=True, text=True)
+    return res.stdout
+
+
+def main(argv=None):
+    import argparse
+    import datetime as _dt
+    import os as _os
+    import pathlib
+    import random as _random
+    import sys as _sys
+
+    ap = argparse.ArgumentParser(description="VirusTotal scan for release installers")
+    ap.add_argument("--assets-dir", required=True)
+    ap.add_argument("--tag", required=True)
+    ap.add_argument("--report", default="VIRUSTOTAL-REPORT.md")
+    ap.add_argument("--notes-file", default="release-notes.md")
+    ap.add_argument("--report-asset", default="VIRUSTOTAL-REPORT.md")
+    ap.add_argument("--dry-run", action="store_true",
+                    help="skip network + gh; produce report/notes from local files only")
+    args = ap.parse_args(argv)
+
+    assets = filter_installers(pathlib.Path(args.assets_dir))
+    api_key = "" if args.dry_run else _os.environ.get("VIRUSTOTAL_API_KEY", "")
+
+    if args.dry_run:
+        placeholder = "0" * 64
+        results = [
+            VtResult(a.name, placeholder, a.stat().st_size, "clean",
+                     0, 70,
+                     permalink=f"https://www.virustotal.com/gui/file/{placeholder}")
+            for a in assets
+        ]
+    elif not api_key:
+        _sys.stderr.write("VIRUSTOTAL_API_KEY not set; emitting skipped report\n")
+        results = [VtResult(a.name, "", a.stat().st_size, "skipped",
+                            detail="API key unavailable") for a in assets]
+    else:
+        limiter = RateLimiter(MIN_INTERVAL + _random.uniform(-2, 3))
+        results = [scan_one(a, api_key, limiter) for a in assets]
+
+    meta = {
+        "tag": args.tag,
+        "date": _dt.datetime.now(_dt.timezone.utc).strftime("%Y-%m-%d %H:%M"),
+    }
+    pathlib.Path(args.report).write_text(build_report_md(results, meta))
+    _sys.stderr.write(f"wrote {args.report}\n")
+
+    if args.dry_run:
+        existing = ""
+    else:
+        try:
+            data = _json.loads(gh(["release", "view", args.tag, "--json", "body"]))
+            existing = (data.get("body") or "")
+        except Exception as e:
+            _sys.stderr.write(f"could not fetch release body: {e}\n")
+            existing = ""
+
+    section = build_notes_section(args.report_asset, results)
+    pathlib.Path(args.notes_file).write_text(append_notes_section(existing, section))
+    _sys.stderr.write(f"wrote {args.notes_file}\n")
+    return 0
+
+
+if __name__ == "__main__":
+    import sys as _sys
+    _sys.exit(main())

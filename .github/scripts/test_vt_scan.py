@@ -233,5 +233,38 @@ class TestHttpShape(unittest.TestCase):
         self.assertIn("limiter", sig.parameters)
 
 
+import pathlib
+import tempfile
+
+import vt_scan
+
+
+class TestDryRun(unittest.TestCase):
+    def test_dry_run_writes_report_and_notes(self):
+        with tempfile.TemporaryDirectory() as d:
+            td = pathlib.Path(d)
+            (td / "app.dmg").write_bytes(b"hello")
+            (td / "app.exe").write_bytes(b"world")
+            (td / "latest.json").write_text("{}")  # ignored
+            report = td / "REPORT.md"
+            notes = td / "NOTES.md"
+            rc = vt_scan.main([
+                "--assets-dir", str(td),
+                "--tag", "v9.9.9",
+                "--report", str(report),
+                "--notes-file", str(notes),
+                "--dry-run",
+            ])
+            self.assertEqual(rc, 0)
+            r = report.read_text()
+            self.assertIn("`v9.9.9`", r)
+            self.assertIn("app.dmg", r)
+            self.assertIn("app.exe", r)
+            self.assertNotIn("latest.json", r)
+            n = notes.read_text()
+            self.assertIn("## VirusTotal Scan", n)
+            self.assertIn("`app.dmg`", n)
+
+
 if __name__ == "__main__":
     unittest.main()
