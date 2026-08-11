@@ -152,5 +152,45 @@ class TestReport(unittest.TestCase):
         self.assertIn("https://vt/g/a", md)
 
 
+from vt_scan import (
+    NOTES_HEADER,
+    append_notes_section,
+    build_notes_section,
+)
+
+
+class TestNotes(unittest.TestCase):
+    def test_section_lists_each_file(self):
+        results = [
+            VtResult("a.dmg", "a", 1, "clean", 0, 70, permalink="https://x/a"),
+            VtResult("b.exe", "b", 2, "detection", 5, 70, permalink="https://x/b"),
+        ]
+        s = build_notes_section("VIRUSTOTAL-REPORT.md", results)
+        self.assertIn(NOTES_HEADER, s)
+        self.assertIn("Scanned 2 installer(s); 1 flagged.", s)
+        self.assertIn("`VIRUSTOTAL-REPORT.md`", s)
+        self.assertIn("🟢 `a.dmg`", s)
+        self.assertIn("🔴 `b.exe`", s)
+        self.assertIn("5/70", s)
+
+    def test_append_preserves_existing_body(self):
+        existing = "## What's new\n\n- feature\n"
+        section = "## VirusTotal Scan\n\nstuff"
+        out = append_notes_section(existing, section)
+        self.assertIn("## What's new", out)
+        self.assertIn("- feature", out)
+        self.assertIn("## VirusTotal Scan", out)
+        self.assertIn("stuff", out)
+
+    def test_append_is_idempotent(self):
+        section = "## VirusTotal Scan\n\nfirst"
+        out1 = append_notes_section("body", section)
+        out2 = append_notes_section(out1, "## VirusTotal Scan\n\nsecond")
+        self.assertEqual(out1.count("VirusTotal Scan"), 1)
+        self.assertEqual(out2.count("VirusTotal Scan"), 1)
+        self.assertIn("second", out2)
+        self.assertNotIn("first", out2)
+
+
 if __name__ == "__main__":
     unittest.main()

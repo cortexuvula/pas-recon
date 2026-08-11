@@ -151,3 +151,29 @@ def build_report_md(results, meta):
         )
     lines.append("")
     return "\n".join(lines)
+
+
+# ---- pure: release notes ------------------------------------------------
+NOTES_HEADER = "## VirusTotal Scan"
+
+
+def build_notes_section(report_asset, results):
+    flagged = sum(1 for r in results if r.status == "detection")
+    lines = [NOTES_HEADER, ""]
+    lines.append(
+        f"Scanned {len(results)} installer(s); {flagged} flagged. "
+        f"Full report: [`{report_asset}`]({report_asset})."
+    )
+    lines.append("")
+    for r in results:
+        mark = "🔴" if r.status == "detection" else "🟢"
+        link = f"[{r.detection_label}]({r.permalink})" if r.permalink else r.detection_label
+        lines.append(f"- {mark} `{r.name}` — {link}")
+    return "\n".join(lines)
+
+
+def append_notes_section(existing_body, section):
+    """Append VT section, replacing any previously-added one (idempotent)."""
+    parts = (existing_body or "").split("\n" + NOTES_HEADER)
+    base = parts[0].rstrip()
+    return f"{base}\n\n{section}\n"
