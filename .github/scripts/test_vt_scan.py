@@ -117,5 +117,40 @@ class TestParsing(unittest.TestCase):
         self.assertEqual(stats, (2, 62))
 
 
+from vt_scan import build_report_md, platform_of
+
+
+class TestReport(unittest.TestCase):
+    def test_platform_of(self):
+        self.assertEqual(platform_of("a.dmg"), "macOS")
+        self.assertEqual(platform_of("setup.exe"), "Windows")
+        self.assertEqual(platform_of("a.msi"), "Windows")
+        self.assertEqual(platform_of("a.deb"), "Linux")
+        self.assertEqual(platform_of("a.AppImage"), "Linux")
+        self.assertEqual(platform_of("a.rpm"), "Linux")
+
+    def test_build_report_md_summary_and_rows(self):
+        results = [
+            VtResult("app-1.0.dmg", "abcdef0123456789", 5000, "clean",
+                     0, 70, permalink="https://vt/g/a"),
+            VtResult("setup.exe", "ff", 70000000, "detection",
+                     3, 70, permalink="https://vt/g/b"),
+            VtResult("big.msi", "11", 40000000, "oversized",
+                     detail=">32 MB"),
+        ]
+        md = build_report_md(results, {"tag": "v0.5.4", "date": "2026-08-11 12:00"})
+        self.assertIn("`v0.5.4`", md)
+        self.assertIn("2026-08-11 12:00 UTC", md)
+        self.assertIn("Free public API (32 MB upload cap)", md)
+        self.assertIn("Files scanned: **3**", md)
+        self.assertIn("Files with detections: **1**", md)
+        self.assertIn("Total engine detections: **3**", md)
+        self.assertIn("| app-1.0.dmg | macOS | `abcdef012345` |", md)
+        self.assertIn("| setup.exe | Windows |", md)
+        self.assertIn("3/70", md)
+        self.assertIn("oversized", md)
+        self.assertIn("https://vt/g/a", md)
+
+
 if __name__ == "__main__":
     unittest.main()

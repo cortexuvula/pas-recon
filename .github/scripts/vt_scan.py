@@ -107,3 +107,47 @@ def parse_analysis(payload):
     stats = attrs.get("stats", {}) or {}
     malicious = int(stats.get("malicious", 0))
     return (state, (malicious, _count_engines(stats)))
+
+
+# ---- pure: report markdown ----------------------------------------------
+def platform_of(name):
+    n = name.lower()
+    if n.endswith(".dmg"):
+        return "macOS"
+    if n.endswith((".exe", ".msi")):
+        return "Windows"
+    if n.endswith((".deb", ".appimage", ".rpm")):
+        return "Linux"
+    return "?"
+
+
+def build_report_md(results, meta):
+    lines = [
+        "# VirusTotal Scan Report",
+        "",
+        f"- **Release:** `{meta['tag']}`",
+        f"- **Scanned:** {meta['date']} UTC",
+        "- **Tier:** Free public API (32 MB upload cap)",
+        "",
+        "## Summary",
+        "",
+        f"- Files scanned: **{len(results)}**",
+        f"- Files with detections: **{sum(1 for r in results if r.status == 'detection')}**",
+        f"- Total engine detections: **{sum(r.malicious for r in results)}**",
+        "",
+        "## Per-file results",
+        "",
+        "| File | Platform | SHA-256 (short) | Size | Detections | Status | Report |",
+        "|---|---|---|---|---|---|---|",
+    ]
+    if not results:
+        lines.append("| _no installers found_ |  |  |  |  |  |  |")
+    for r in results:
+        size_kb = f"{r.size / 1024:.0f} KB" if r.size else "?"
+        link = f"[view]({r.permalink})" if r.permalink else "—"
+        lines.append(
+            f"| {r.name} | {platform_of(r.name)} | `{short_sha(r.sha256)}` | "
+            f"{size_kb} | {r.detection_label} | {r.status} | {link} |"
+        )
+    lines.append("")
+    return "\n".join(lines)
