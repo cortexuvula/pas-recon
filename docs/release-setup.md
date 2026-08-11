@@ -80,3 +80,26 @@ git push origin v0.1.0
 
 The GitHub Actions workflow builds all platforms and uploads installers +
 the `latest.json` manifest to the release.
+
+## VirusTotal scan
+
+After the build matrix uploads installers to the release, a `virustotal-scan` job
+downloads them, scans each on the **free public VirusTotal API**, and publishes:
+
+- `VIRUSTOTAL-REPORT.md` as a release asset.
+- A `## VirusTotal Scan` section appended to the release notes.
+
+The job is `continue-on-error` and the script never exits non-zero — detections are
+informational and never block a release.
+
+### Required secret
+
+Add a repository secret named **`VIRUSTOTAL_API_KEY`** with a free public API key from
+<https://www.virustotal.com/gui/my-apikey>.
+
+### Free-tier limits
+
+- 32 MB upload cap. Larger installers fall back to a hash-only lookup; if the hash is
+  unknown to VT, the file is recorded as "oversized" in the report.
+- ~4 requests/minute. The scan job is single and rate-limits itself (>=16 s between calls),
+  with exponential backoff on HTTP 429.
