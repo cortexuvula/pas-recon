@@ -76,3 +76,50 @@ jobs:
           releaseDraft: false
           prerelease: false
           args: ${{ matrix.args }}
+
+  virustotal-scan:
+    needs: build-tauri
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download release installers
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir -p scan-assets
+          gh release download "${{ github.ref_name }}" \
+            --dir scan-assets \
+            --pattern '*.dmg' \
+            --pattern '*.exe' \
+            --pattern '*.msi' \
+            --pattern '*.deb' \
+            --pattern '*.AppImage' \
+            --pattern '*.rpm' \
+            || echo "no matching assets"
+
+      - name: Scan with VirusTotal
+        env:
+          VIRUSTOTAL_API_KEY: ${{ secrets.VIRUSTOTAL_API_KEY }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Requires the VIRUSTOTAL_API_KEY repository secret (free public key).
+          python .github/scripts/vt_scan.py \
+            --assets-dir scan-assets \
+            --tag "${{ github.ref_name }}"
+
+      - name: Publish report + release notes
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release upload "${{ github.ref_name }}" VIRUSTOTAL-REPORT.md --clobber
+          # Only rewrite the release body if the script produced notes; otherwise
+          # leave the existing changelog untouched (defense-in-depth).
+          if [ -f release-notes.md ]; then
+            gh release edit "${{ github.ref_name }}" --notes-file release-notes.md
+          else
+            echo "release-notes.md not produced; leaving release body unchanged"
+          fi
