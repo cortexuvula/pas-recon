@@ -199,3 +199,65 @@ class RateLimiter:
         if delta > 0:
             self._sleep(delta)
         self._last = self._monotonic()
+
+
+# ---- http client (free-tier aware) --------------------------------------
+import json as _json
+import random as _random
+import urllib.error as _urlerr
+import urllib.request as _urlreq
+
+VT_BASE = "https://www.virustotal.com/api/v3"
+HTTP_TIMEOUT = 60
+
+
+def vt_http(method, path, api_key, *, body=None, multipart=None, limiter):
+    """Call a VT v3 endpoint and return parsed JSON.
+
+    On HTTP 404 raises urllib.error.HTTPError (callers treat as 'not found').
+    On 429 / transient errors, retries with exponential backoff up to 3 times.
+    On terminal failure raises RuntimeError.
+    """
+    url = f"{VT_BASE}{path}"
+    headers = {"x-apikey": api_key, "Accept": "application/json"}
+    data = None
+    if multipart is not None:
+        boundary = "----vtscan" + format(_random.randint(0, 1 << 32), "x")
+        fname, content = multipart
+        head = (
+            f"--{boundary}\r\n"
+            f'Content-Disposition: form-data; name="file"; filename="{fname}"\r\n'
+            f"Content-Type: application/octet-stream\r\n\r\n"
+        ).encode()
+        data = head + content + f"\r\n--{boundary}--\r\n".encode()
+        headers["Content-Type"] = f"multipart/form-data; boundary={boundary}"
+    elif body is not None:
+        data = body if isinstance(body, bytes) else body.encode()
+        headers["Content-Type"] = "application/json"
+
+    last_err = ""
+    for attempt in range(4):
+        limiter.wait()
+        req = _urlreq.Request(url, data=data, headers=headers, method=method)
+        try:
+            with _urlreq.urlopen(req, timeout=HTTP_TIMEOUT) as resp:
+                raw = resp.read().decode() or "{}"
+                return _json.loads(raw)
+        except _urlerr.HTTPError as e:
+            payload = e.read().decode(errors="replace")
+            last_err = f"HTTP {e.code}: {payload[:200]}"
+            if e.code == 404:
+                raise
+            if e.code == 429 and attempt < 3:
+                import time
+                time.sleep(compute_backoff(attempt))
+                continue
+            raise RuntimeError(last_err)
+        except (_urlerr.URLError, TimeoutError, ConnectionError) as e:
+            last_err = str(e)
+            if attempt < 3:
+                import time
+                time.sleep(compute_backoff(attempt))
+                continue
+            raise RuntimeError(last_err)
+    raise RuntimeError(last_err or "http failed")

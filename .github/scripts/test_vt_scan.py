@@ -219,5 +219,19 @@ class TestRateLimit(unittest.TestCase):
         self.assertEqual(sleeps[-1], 6.0)
 
 
+import inspect
+
+from vt_scan import vt_http
+
+
+class TestHttpShape(unittest.TestCase):
+    def test_vt_http_is_callable(self):
+        self.assertTrue(callable(vt_http))
+
+    def test_vt_http_accepts_limiter_kwarg(self):
+        sig = inspect.signature(vt_http)
+        self.assertIn("limiter", sig.parameters)
+
+
 if __name__ == "__main__":
     unittest.main()
