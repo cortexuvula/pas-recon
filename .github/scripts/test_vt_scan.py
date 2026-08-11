@@ -1,4 +1,6 @@
 import unittest
+from unittest import mock
+import urllib.error
 
 import vt_scan  # noqa: F401  (smoke: module imports)
 
@@ -280,6 +282,106 @@ class TestMainResilience(unittest.TestCase):
                 "--dry-run",
             ])
             self.assertEqual(rc, 0)
+
+
+class TestScanOne(unittest.TestCase):
+    def _named(self, name):
+        d = tempfile.TemporaryDirectory()
+        self.addCleanup(d.cleanup)
+        return pathlib.Path(d.name) / name
+
+    def test_hash_hit_returns_cached_result(self):
+        p = self._named("app.exe")
+        p.write_bytes(b"hello")
+        payload = {"data": {"id": "x", "attributes": {
+            "sha256": "x", "size": p.stat().st_size,
+            "last_analysis_stats": {"malicious": 2, "harmless": 60}}}}
+        rl = vt_scan.RateLimiter(min_interval=0)
+        with mock.patch("vt_scan.vt_http", return_value=payload):
+            r = vt_scan.scan_one(p, "key", rl)
+        self.assertEqual(r.status, "detection")
+        self.assertEqual(r.malicious, 2)
+        self.assertEqual(r.name, "app.exe")
+
+    def test_unknown_then_upload_then_completed(self):
+        p = self._named("setup.exe")
+        p.write_bytes(b"world")
+        calls = []
+
+        def fake_http(method, path, api_key, *, body=None, multipart=None, limiter):
+            calls.append((method, path))
+            if method == "GET" and path.startswith("/files/"):
+                raise urllib.error.HTTPError("u", 404, "nf", {}, None)
+            if method == "POST" and path == "/files":
+                return {"data": {"id": "anid"}}
+            if method == "GET" and path == "/analyses/anid":
+                return {"data": {"id": "anid", "attributes": {
+                    "status": "completed",
+                    "stats": {"malicious": 0, "harmless": 70}}}}
+            self.fail(f"unexpected call {method} {path}")
+
+        rl = vt_scan.RateLimiter(min_interval=0)
+        with mock.patch("vt_scan.vt_http", side_effect=fake_http), \
+                mock.patch("time.sleep"):
+            r = vt_scan.scan_one(p, "key", rl)
+        self.assertEqual(r.status, "clean")
+        self.assertEqual(r.malicious, 0)
+        self.assertIn(("POST", "/files"), calls)
+
+    def test_oversized_skips_upload(self):
+        p = self._named("big.msi")
+        with p.open("wb") as f:
+            f.truncate(33 * 1024 * 1024)  # sparse; > 32 MB cap
+
+        def fake_http(method, path, api_key, *, body=None, multipart=None, limiter):
+            if method == "GET" and path.startswith("/files/"):
+                raise urllib.error.HTTPError("u", 404, "nf", {}, None)
+            self.fail("should not upload an oversized file")
+
+        rl = vt_scan.RateLimiter(min_interval=0)
+        with mock.patch("vt_scan.vt_http", side_effect=fake_http):
+            r = vt_scan.scan_one(p, "key", rl)
+        self.assertEqual(r.status, "oversized")
+
+
+class TestSha256(unittest.TestCase):
+    def test_known_vector(self):
+        with tempfile.TemporaryDirectory() as d:
+            p = pathlib.Path(d) / "f"
+            p.write_bytes(b"abc")
+            self.assertEqual(
+                vt_scan.sha256_of(p),
+                "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",
+            )
+
+
+class TestMainInvariants(unittest.TestCase):
+    def test_missing_assets_dir_returns_zero(self):
+        with tempfile.TemporaryDirectory() as d:
+            td = pathlib.Path(d)
+            rc = vt_scan.main([
+                "--assets-dir", "/definitely/not/here/vt", "--tag", "v0", "--dry-run",
+                "--report", str(td / "R.md"),
+                "--notes-file", str(td / "N.md"),
+            ])
+            self.assertEqual(rc, 0)
+
+    def test_no_api_key_and_gh_failure_skips_notes(self):
+        import os
+        with tempfile.TemporaryDirectory() as d:
+            td = pathlib.Path(d)
+            (td / "app.dmg").write_bytes(b"hi")
+            os.environ.pop("VIRUSTOTAL_API_KEY", None)
+            report = td / "R.md"
+            notes = td / "N.md"
+            with mock.patch("vt_scan.gh", side_effect=RuntimeError("boom")):
+                rc = vt_scan.main([
+                    "--assets-dir", str(td), "--tag", "v0",
+                    "--report", str(report), "--notes-file", str(notes),
+                ])
+            self.assertEqual(rc, 0)            # never fail
+            self.assertIn("skipped", report.read_text())  # report still written
+            self.assertFalse(notes.exists())   # notes NOT written (body fetch failed)
 
 
 if __name__ == "__main__":

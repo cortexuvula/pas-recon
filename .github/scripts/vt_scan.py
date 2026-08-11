@@ -72,7 +72,8 @@ class VtResult:
 
 
 def _count_engines(stats):
-    counted = ("malicious", "suspicious", "harmless", "undetected", "type-unsupported")
+    counted = ("malicious", "suspicious", "harmless", "undetected",
+               "type-unsupported", "timeout", "confirmed-timeout", "failure")
     return sum(int(stats.get(k, 0)) for k in counted)
 
 
@@ -224,9 +225,10 @@ def vt_http(method, path, api_key, *, body=None, multipart=None, limiter):
     if multipart is not None:
         boundary = "----vtscan" + format(_random.randint(0, 1 << 32), "x")
         fname, content = multipart
+        safe_name = fname.replace('"', "").replace("\r", "").replace("\n", "")
         head = (
             f"--{boundary}\r\n"
-            f'Content-Disposition: form-data; name="file"; filename="{fname}"\r\n'
+            f'Content-Disposition: form-data; name="file"; filename="{safe_name}"\r\n'
             f"Content-Type: application/octet-stream\r\n\r\n"
         ).encode()
         data = head + content + f"\r\n--{boundary}--\r\n".encode()
@@ -339,10 +341,6 @@ def gh(args):
 
 def main(argv=None):
     import argparse
-    import datetime as _dt
-    import os as _os
-    import pathlib
-    import random as _random
     import sys as _sys
 
     ap = argparse.ArgumentParser(description="VirusTotal scan for release installers")
@@ -355,14 +353,34 @@ def main(argv=None):
                     help="skip network + gh; produce report/notes from local files only")
     args = ap.parse_args(argv)
 
-    assets = filter_installers(pathlib.Path(args.assets_dir))
+    # Top-level guard: the script MUST never fail the release build, even on
+    # unexpected exceptions (malformed VT payloads, missing dirs, etc.).
+    try:
+        return _run(args)
+    except Exception as e:
+        _sys.stderr.write(f"vt_scan: aborting but not failing build: {e}\n")
+        return 0
+
+
+def _run(args):
+    import datetime as _dt
+    import os as _os
+    import pathlib
+    import random as _random
+    import sys as _sys
+
+    try:
+        assets = filter_installers(pathlib.Path(args.assets_dir))
+    except Exception as e:
+        assets = []
+        _sys.stderr.write(f"could not list assets dir: {e}\n")
+
     api_key = "" if args.dry_run else _os.environ.get("VIRUSTOTAL_API_KEY", "")
 
     if args.dry_run:
         placeholder = "0" * 64
         results = [
-            VtResult(a.name, placeholder, a.stat().st_size, "clean",
-                     0, 70,
+            VtResult(a.name, placeholder, a.stat().st_size, "clean", 0, 70,
                      permalink=f"https://www.virustotal.com/gui/file/{placeholder}")
             for a in assets
         ]
@@ -371,7 +389,8 @@ def main(argv=None):
         results = [VtResult(a.name, "", a.stat().st_size, "skipped",
                             detail="API key unavailable") for a in assets]
     else:
-        limiter = RateLimiter(MIN_INTERVAL + _random.uniform(-2, 3))
+        # jitter is non-negative so the floor stays at MIN_INTERVAL (>= 16 s)
+        limiter = RateLimiter(MIN_INTERVAL + _random.uniform(0, 3))
         results = [scan_one(a, api_key, limiter) for a in assets]
 
     meta = {
@@ -384,22 +403,31 @@ def main(argv=None):
     except Exception as e:
         _sys.stderr.write(f"could not write report {args.report}: {e}\n")
 
+    # Notes: only rewrite the release body if we actually fetched it; otherwise
+    # `gh release edit --notes-file` would replace the whole changelog with just
+    # this section. Clear any stale notes file so the edit step fails cleanly.
     if args.dry_run:
         existing = ""
     else:
+        existing = None
         try:
             data = _json.loads(gh(["release", "view", args.tag, "--json", "body"]))
-            existing = (data.get("body") or "")
+            existing = data.get("body") or ""
         except Exception as e:
-            _sys.stderr.write(f"could not fetch release body: {e}\n")
-            existing = ""
+            _sys.stderr.write(f"could not fetch release body; skipping notes rewrite: {e}\n")
+            try:
+                pathlib.Path(args.notes_file).unlink(missing_ok=True)
+            except OSError:
+                pass
 
-    section = build_notes_section(args.report_asset, results)
-    try:
-        pathlib.Path(args.notes_file).write_text(append_notes_section(existing, section))
-        _sys.stderr.write(f"wrote {args.notes_file}\n")
-    except Exception as e:
-        _sys.stderr.write(f"could not write notes {args.notes_file}: {e}\n")
+    if existing is not None:
+        section = build_notes_section(args.report_asset, results)
+        try:
+            pathlib.Path(args.notes_file).write_text(append_notes_section(existing, section))
+            _sys.stderr.write(f"wrote {args.notes_file}\n")
+        except Exception as e:
+            _sys.stderr.write(f"could not write notes {args.notes_file}: {e}\n")
+
     return 0
 
 
