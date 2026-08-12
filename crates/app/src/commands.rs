@@ -9,6 +9,22 @@ use pas_recon_engine::{
     model::{ReconciliationResult, DisplayRow, EngineError},
 };
 
+/// Defense-in-depth validation of an IPC-supplied filesystem path.
+///
+/// Rejects empty paths and paths containing NUL bytes (which can truncate or
+/// confuse downstream OS calls). Paths are otherwise user-chosen via native
+/// file dialogs, so location is not restricted — this is a sanitizer, not a
+/// sandbox.
+fn validate_path(path: &str) -> Result<(), String> {
+    if path.trim().is_empty() {
+        return Err("No file path provided.".to_string());
+    }
+    if path.contains('\0') {
+        return Err("File path contains an invalid NUL character.".to_string());
+    }
+    Ok(())
+}
+
 /// Read two CSV files from disk and run reconciliation.
 /// Auto-detects the PHN column in each. Offloaded to a blocking thread.
 #[tauri::command]
@@ -17,6 +33,14 @@ pub async fn reconcile_files(
     pas_path: String,
 ) -> Result<ReconciliationResult, String> {
     tauri::async_runtime::spawn_blocking(move || {
+        validate_path(&emr_path).map_err(|e| EngineError::Io {
+            source: "EMR".to_string(),
+            message: e,
+        })?;
+        validate_path(&pas_path).map_err(|e| EngineError::Io {
+            source: "PAS".to_string(),
+            message: e,
+        })?;
         let emr_bytes = std::fs::read(&emr_path).map_err(|e| EngineError::Io {
             source: "EMR".to_string(),
             message: e.to_string(),
@@ -43,6 +67,14 @@ pub async fn reconcile_with_column_override(
     pas_phn_column: Option<usize>,
 ) -> Result<ReconciliationResult, String> {
     tauri::async_runtime::spawn_blocking(move || {
+        validate_path(&emr_path).map_err(|e| EngineError::Io {
+            source: "EMR".to_string(),
+            message: e,
+        })?;
+        validate_path(&pas_path).map_err(|e| EngineError::Io {
+            source: "PAS".to_string(),
+            message: e,
+        })?;
         let emr_bytes = std::fs::read(&emr_path).map_err(|e| EngineError::Io {
             source: "EMR".to_string(),
             message: e.to_string(),
@@ -65,9 +97,9 @@ pub async fn reconcile_with_column_override(
 }
 
 /// Export the list to a CSV or PDF file at the given path.
-/// Format is determined by the `format` param ("csv" or "pdf").
-/// PDF is generated as a print-ready HTML file that opens in the browser.
-/// Offloaded to a blocking thread.
+/// `format` must be exactly "csv" or "pdf"; any other value returns an error
+/// rather than silently falling back to CSV. PDF is generated as a print-ready
+/// HTML file that opens in the browser. Offloaded to a blocking thread.
 #[tauri::command]
 pub async fn export_list(
     rows: Vec<DisplayRow>,
@@ -76,9 +108,13 @@ pub async fn export_list(
     title: String,
 ) -> Result<(), String> {
     tauri::async_runtime::spawn_blocking(move || {
+        validate_path(&path)?;
         match format.as_str() {
+            "csv" => export_csv(&rows, &path),
             "pdf" => export_html(&rows, &path, &title),
-            _ => export_csv(&rows, &path),
+            other => Err(format!(
+                "Unknown export format: {other:?}. Supported formats: csv, pdf."
+            )),
         }
     })
     .await
@@ -159,18 +195,13 @@ tr:nth-child(even) td {{ background: #f9fafb; }}
 
     std::fs::write(path, body).map_err(|e| format!("Failed to write file: {e}"))?;
 
-    // Open the file in the default browser using the OS's native command.
-    // If this fails, inform the user but still report success (file was written).
-    #[cfg(target_os = "macos")]
-    let open_result = std::process::Command::new("open").arg(path).spawn();
-    #[cfg(target_os = "windows")]
-    let open_result = std::process::Command::new("cmd").args(["/C", "start", "", path]).spawn();
-    #[cfg(target_os = "linux")]
-    let open_result = std::process::Command::new("xdg-open").arg(path).spawn();
-
-    #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
-    if open_result.is_err() {
-        return Ok(()); // File was written successfully; browser open is best-effort
+    // Open the file in the default viewer via the OS's native mechanism. This
+    // uses ShellExecuteW/open/xdg-open under the hood (through the opener
+    // plugin) and never passes the path through cmd.exe, so metacharacters in
+    // paths like "Smith & Jones.html" can't be shell-interpreted. Best-effort:
+    // the file is already written, so a failure to open is only logged.
+    if let Err(e) = tauri_plugin_opener::open_path(path, None::<&str>) {
+        eprintln!("failed to open exported file in viewer: {e}");
     }
 
     Ok(())
@@ -189,6 +220,7 @@ fn html_escape(s: &str) -> String {
 #[tauri::command]
 pub async fn get_csv_headers(path: String) -> Result<Vec<String>, String> {
     tauri::async_runtime::spawn_blocking(move || {
+        validate_path(&path)?;
         let bytes = std::fs::read(&path).map_err(|e| e.to_string())?;
         let parsed = pas_recon_engine::parse::parse_csv(&bytes).map_err(|e| e.to_string())?;
         Ok(parsed.headers)

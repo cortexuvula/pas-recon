@@ -32,15 +32,35 @@ pub async fn check_and_fetch(app: &AppHandle) -> Result<Option<UpdateInfo>, Stri
 }
 
 /// Check for updates and emit an event to the frontend if one is available.
-/// Only emits once per app session (deduplication via atomic flag).
-/// Called on a timer after launch.
+/// Only emits once per app session. Called on a timer after launch.
+///
+/// Deduplication uses an atomic compare-exchange (test-and-set) rather than a
+/// load/store pair, so overlapping timer ticks can't both pass the check and
+/// emit duplicate events. The flag is only left set when an update is actually
+/// found and emitted; on a fetch error, no-update result, or emit failure the
+/// slot is released so a later check can still notify.
 pub async fn check_and_notify(app: &AppHandle) -> Result<(), String> {
-    if NOTIFIED.load(Ordering::Relaxed) {
+    // Atomically claim the notification slot. If already claimed, another check
+    // is in flight or has already emitted.
+    if NOTIFIED
+        .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+        .is_err()
+    {
         return Ok(());
     }
-    if let Some(info) = check_and_fetch(app).await? {
-        NOTIFIED.store(true, Ordering::Relaxed);
-        app.emit("update-available", &info).map_err(|e| e.to_string())?;
+
+    let outcome = async {
+        if let Some(info) = check_and_fetch(app).await? {
+            app.emit("update-available", &info).map_err(|e| e.to_string())?;
+        }
+        Ok::<(), String>(())
     }
-    Ok(())
+    .await;
+
+    // Release the slot unless we emitted successfully, so a future tick can
+    // still notify (no update yet, transient error, or emit failure).
+    if outcome.is_err() {
+        NOTIFIED.store(false, Ordering::SeqCst);
+    }
+    outcome
 }
