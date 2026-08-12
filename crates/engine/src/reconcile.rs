@@ -53,7 +53,7 @@ fn raw_row_to_display(
     row: &crate::model::RawRow,
     mapping: &ColumnMapping,
     raw_phn: &str,
-    source: &str,
+    source: CsvSource,
 ) -> DisplayRow {
     DisplayRow {
         phn: raw_phn.trim().to_string(),
@@ -62,7 +62,7 @@ fn raw_row_to_display(
         dob: field(&row.fields, mapping.dob),
         mrp_status: field(&row.fields, mapping.mrp_status),
         raw_fields: row.fields.clone(),
-        source: Some(source.to_string()),
+        source: Some(source),
     }
 }
 
@@ -79,7 +79,7 @@ fn build_emr_records(
         let raw_phn = row.fields.get(mapping.phn).map(|s| s.as_str()).unwrap_or("");
 
         if !phn::is_valid_bc_phn(raw_phn) {
-            invalid_rows.push(raw_row_to_display(row, mapping, raw_phn, "EMR"));
+            invalid_rows.push(raw_row_to_display(row, mapping, raw_phn, CsvSource::Emr));
             continue;
         }
 
@@ -108,7 +108,7 @@ fn build_pas_records(
         let raw_phn = row.fields.get(mapping.phn).map(|s| s.as_str()).unwrap_or("");
 
         if !phn::is_valid_bc_phn(raw_phn) {
-            invalid_rows.push(raw_row_to_display(row, mapping, raw_phn, "PAS"));
+            invalid_rows.push(raw_row_to_display(row, mapping, raw_phn, CsvSource::Pas));
             continue;
         }
 

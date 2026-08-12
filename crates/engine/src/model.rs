@@ -43,11 +43,15 @@ pub struct DisplayRow {
     pub last_name: Option<String>,
     pub dob: Option<String>,
     pub mrp_status: Option<String>,
+    /// The original CSV fields for this row. Kept for potential internal use
+    /// but NOT serialized across IPC — it would ship the entire raw row
+    /// (including columns the UI never displays) to the webview for no purpose.
+    #[serde(skip)]
     pub raw_fields: Vec<String>,
-    /// Which file this row came from ("EMR" or "PAS"). Only set for
-    /// invalid_phns where provenance isn't obvious from the list name.
+    /// Which file this row came from. Only set for invalid_phns where
+    /// provenance isn't obvious from the list name.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub source: Option<String>,
+    pub source: Option<CsvSource>,
 }
 
 /// Errors that abort a reconciliation run.
@@ -120,10 +124,13 @@ impl std::fmt::Display for EngineError {
 
 impl std::error::Error for EngineError {}
 
-/// Which CSV file an error or record belongs to.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+/// Which CSV file an error or record belongs to. Serialized as `"EMR"`/`"PAS"`
+/// to match the existing frontend wire format.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum CsvSource {
+    #[serde(rename = "EMR")]
     Emr,
+    #[serde(rename = "PAS")]
     Pas,
 }
 

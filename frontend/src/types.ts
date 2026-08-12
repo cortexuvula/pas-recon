@@ -32,8 +32,7 @@ export interface DisplayRow {
   last_name: string | null;
   dob: string | null;
   mrp_status: string | null;
-  raw_fields: string[];
-  source?: string | null;
+  source?: "EMR" | "PAS";
 }
 
 export interface UpdateInfo {
