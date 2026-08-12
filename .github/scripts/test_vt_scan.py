@@ -118,6 +118,29 @@ class TestParsing(unittest.TestCase):
         self.assertEqual(state, "completed")
         self.assertEqual(stats, (2, 62))
 
+    def test_parse_hash_lookup_missing_stats_is_not_clean(self):
+        # No last_analysis_stats at all — VT has never finished analyzing. This
+        # must NOT be reported as "clean".
+        payload = {"data": {"id": "abc", "attributes": {"sha256": "abc123", "size": 10}}}
+        r = parse_hash_lookup(payload)
+        self.assertIsNotNone(r)
+        self.assertEqual(r.status, "queued")
+
+    def test_parse_hash_lookup_empty_stats_is_not_clean(self):
+        payload = {"data": {"id": "abc", "attributes": {
+            "sha256": "abc123", "size": 10, "last_analysis_stats": {}}}}
+        r = parse_hash_lookup(payload)
+        self.assertIsNotNone(r)
+        self.assertEqual(r.status, "queued")
+
+    def test_parse_analysis_terminal_failure_is_surfaced(self):
+        # A non-queued/non-completed status (e.g. "failed") is terminal and must
+        # be surfaced as an error state, not polled as if still queued.
+        failed = {"data": {"id": "anid", "attributes": {"status": "failed"}}}
+        state, stats = parse_analysis(failed)
+        self.assertTrue(state.startswith("error"))
+        self.assertIsNone(stats)
+
 
 from vt_scan import build_report_md, platform_of
 
@@ -342,6 +365,29 @@ class TestScanOne(unittest.TestCase):
         with mock.patch("vt_scan.vt_http", side_effect=fake_http):
             r = vt_scan.scan_one(p, "key", rl)
         self.assertEqual(r.status, "oversized")
+
+    def test_terminal_analysis_failure_surfaces_as_error(self):
+        # If VT reports a terminal non-queued/non-completed status, scan_one
+        # must surface it as "error" immediately instead of polling the rest of
+        # the attempts and reporting "queued".
+        p = self._named("bad.exe")
+        p.write_bytes(b"world")
+
+        def fake_http(method, path, api_key, *, body=None, multipart=None, limiter):
+            if method == "GET" and path.startswith("/files/"):
+                raise urllib.error.HTTPError("u", 404, "nf", {}, None)
+            if method == "POST" and path == "/files":
+                return {"data": {"id": "anid"}}
+            if method == "GET" and path == "/analyses/anid":
+                return {"data": {"id": "anid", "attributes": {"status": "failed"}}}
+            self.fail(f"unexpected call {method} {path}")
+
+        rl = vt_scan.RateLimiter(min_interval=0)
+        with mock.patch("vt_scan.vt_http", side_effect=fake_http), \
+                mock.patch("time.sleep"):
+            r = vt_scan.scan_one(p, "key", rl)
+        self.assertEqual(r.status, "error")
+        self.assertIn("failed", r.detail)
 
 
 class TestSha256(unittest.TestCase):

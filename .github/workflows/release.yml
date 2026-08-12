@@ -26,17 +26,20 @@ jobs:
     runs-on: ${{ matrix.platform }}
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v5
+      # Third-party actions are pinned to immutable commit SHAs (with the
+      # human-readable ref in a trailing comment) to protect the signing/release
+      # pipeline from upstream mutable-tag tampering.
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09  # v5
 
       - name: Setup Node
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444  # v5
         with:
           node-version: 22
           cache: npm
           cache-dependency-path: frontend/package-lock.json
 
       - name: Install Rust stable
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@4360b52568e2003a75bf9bc1d59f33a8e3fc893c  # stable
         with:
           targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
 
@@ -60,7 +63,10 @@ jobs:
         if: matrix.platform == 'windows-latest'
         shell: pwsh
         run: |
-          dotnet tool install -g --prerelease sign
+          # Pin the Azure Trusted Signing `sign` tool to an exact audited
+          # version instead of --prerelease, so upstream prerelease changes
+          # can't affect signed artifacts.
+          dotnet tool install -g --version 1.1.5 sign
           "$env:USERPROFILE\.dotnet\tools" >> $env:GITHUB_PATH
 
       - name: Generate Azure signing config (Windows)
@@ -77,7 +83,7 @@ jobs:
           $config = @{ bundle = @{ windows = @{ signCommand = $signCmd } } } | ConvertTo-Json -Depth 3 -Compress
           Set-Content -Path "crates/app/signing-config.json" -Value $config
 
-      - uses: tauri-apps/tauri-action@action-v0.6.2
+      - uses: tauri-apps/tauri-action@84b9d35b5fc46c1e45415bdb6144030364f7ebc5  # action-v0.6.2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
@@ -105,51 +111,75 @@ jobs:
 
   virustotal-scan:
     needs: build-tauri
-    if: always()
+    # Only scan when the build actually produced assets. `always()` would let
+    # this run (and publish a misleading "no installers" report) even if
+    # build-tauri failed. Skip on cancellation; run on success only.
+    if: ${{ !cancelled() && needs.build-tauri.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     continue-on-error: true
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09  # v5
 
       - name: Download release installers
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Pass the tag through an env var instead of interpolating
+          # ${{ github.ref_name }} into the shell, which would be an expression
+          # injection risk on tag events.
+          RELEASE_TAG: ${{ github.ref_name }}
         run: |
           mkdir -p scan-assets
-          gh release download "${{ github.ref_name }}" \
+          set +e
+          gh release download "$RELEASE_TAG" \
             --dir scan-assets \
             --pattern '*.dmg' \
             --pattern '*.exe' \
             --pattern '*.msi' \
             --pattern '*.deb' \
             --pattern '*.AppImage' \
-            --pattern '*.rpm' \
-            || echo "no matching assets"
+            --pattern '*.rpm'
+          rc=$?
+          set -e
+          if [ "$rc" -ne 0 ]; then
+            # gh returns non-zero both when no pattern matches and on real
+            # errors (auth, network, missing release). Query the release to
+            # tell them apart: if it's reachable, a download failure just means
+            # none of its assets matched installer patterns (expected); if it
+            # can't be queried, fail the job instead of silently swallowing it.
+            if gh release view "$RELEASE_TAG" --json assets --jq '.assets | length' >/dev/null 2>&1; then
+              echo "Release '$RELEASE_TAG' has assets but none matched installer scan patterns; nothing to scan."
+            else
+              echo "gh release download failed (exit $rc) and release could not be queried; failing job."
+              exit "$rc"
+            fi
+          fi
 
       - name: Scan with VirusTotal
         env:
           VIRUSTOTAL_API_KEY: ${{ secrets.VIRUSTOTAL_API_KEY }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ github.ref_name }}
         run: |
           # Requires the VIRUSTOTAL_API_KEY repository secret (free public key).
           python .github/scripts/vt_scan.py \
             --assets-dir scan-assets \
-            --tag "${{ github.ref_name }}"
+            --tag "$RELEASE_TAG"
 
       - name: Publish report + release notes
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ github.ref_name }}
         run: |
           if [ -f VIRUSTOTAL-REPORT.md ]; then
-            gh release upload "${{ github.ref_name }}" VIRUSTOTAL-REPORT.md --clobber
+            gh release upload "$RELEASE_TAG" VIRUSTOTAL-REPORT.md --clobber
           else
             echo "VIRUSTOTAL-REPORT.md not produced; skipping report upload"
           fi
           # Only rewrite the release body if the script produced notes; otherwise
           # leave the existing changelog untouched (defense-in-depth).
           if [ -f release-notes.md ]; then
-            gh release edit "${{ github.ref_name }}" --notes-file release-notes.md
+            gh release edit "$RELEASE_TAG" --notes-file release-notes.md
           else
             echo "release-notes.md not produced; leaving release body unchanged"
           fi

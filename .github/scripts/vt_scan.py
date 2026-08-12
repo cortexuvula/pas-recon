@@ -88,7 +88,14 @@ def parse_hash_lookup(payload):
     stats = attrs.get("last_analysis_stats", {}) or {}
     malicious = int(stats.get("malicious", 0))
     total = _count_engines(stats)
-    status = "detection" if malicious > 0 else "clean"
+    # Missing/empty stats means VT has no completed analysis for this file yet.
+    # Reporting that as "clean" would be misleading — treat as not-yet-analyzed.
+    if not stats or total == 0:
+        status = "queued"
+    elif malicious > 0:
+        status = "detection"
+    else:
+        status = "clean"
     return VtResult(
         name="", sha256=sha, size=size, status=status,
         malicious=malicious, total=total,
@@ -97,17 +104,25 @@ def parse_hash_lookup(payload):
 
 
 def parse_analysis(payload):
-    """Return (state, (malicious, total)|None) from a GET /analyses/{id} payload."""
+    """Return (state, (malicious, total)|None) from a GET /analyses/{id} payload.
+
+    `state` is "completed" (terminal success with stats), "queued" (keep
+    polling), or "error-<raw>" for any other status VT reports (e.g. failed),
+    so callers surface terminal failures instead of polling forever.
+    """
     data = (payload or {}).get("data")
     if not data:
         return ("error", None)
     attrs = data.get("attributes", {}) or {}
     state = attrs.get("status", "queued")
-    if state != "completed":
+    if state == "completed":
+        stats = attrs.get("stats", {}) or {}
+        malicious = int(stats.get("malicious", 0))
+        return (state, (malicious, _count_engines(stats)))
+    if state == "queued":
         return (state, None)
-    stats = attrs.get("stats", {}) or {}
-    malicious = int(stats.get("malicious", 0))
-    return (state, (malicious, _count_engines(stats)))
+    # Any other status is a terminal failure we should surface, not poll past.
+    return (f"error-{state}", None)
 
 
 # ---- pure: report markdown ----------------------------------------------
@@ -327,6 +342,11 @@ def scan_one(path, api_key, limiter):
             return VtResult(name, sha, size,
                             "detection" if mal else "clean",
                             malicious=mal, total=total, permalink=permalink)
+        if state != "queued":
+            # Terminal non-success (e.g. VT reported failed/error) — surface it
+            # instead of polling the remaining attempts and reporting "queued".
+            return VtResult(name, sha, size, "error",
+                            detail=f"analysis {state}", permalink=permalink)
 
     return VtResult(name, sha, size, "queued",
                     detail="analysis still running; see permalink", permalink=permalink)
