@@ -11,47 +11,44 @@ use crate::model::PasRecord;
 /// Returns (kept_records, duplicates_dropped_count). Kept records preserve
 /// their original relative order.
 pub fn deduplicate_pas(records: Vec<PasRecord>) -> (Vec<PasRecord>, usize) {
-    // Group indices by PHN
-    let mut groups: HashMap<String, Vec<usize>> = HashMap::new();
-    for (idx, rec) in records.iter().enumerate() {
-        groups.entry(rec.phn.clone()).or_default().push(idx);
-    }
-
-    let mut keep_indices: Vec<usize> = Vec::new();
+    // Track only the winning index per PHN, instead of storing every index.
+    let mut winner_by_phn: HashMap<String, usize> = HashMap::new();
     let mut dropped = 0usize;
 
-    for (_, indices) in &groups {
-        if indices.len() == 1 {
-            keep_indices.push(indices[0]);
-        } else {
-            // Find the index of the newest record (or first-seen on tie)
-            let winner = indices
-                .iter()
-                .copied()
-                .reduce(|best, candidate| {
-                    let best_date = records[best].mrp_updated;
-                    let cand_date = records[candidate].mrp_updated;
-                    match (best_date, cand_date) {
-                        (Some(b), Some(c)) => {
-                            if c > b { candidate } else { best }
-                        }
-                        (None, Some(_)) => candidate,
-                        _ => best, // both None or best is Some → keep best (first-seen)
-                    }
-                })
-                .unwrap();
-
-            keep_indices.push(winner);
-            dropped += indices.len() - 1;
+    for (idx, rec) in records.iter().enumerate() {
+        match winner_by_phn.get(&rec.phn) {
+            None => {
+                winner_by_phn.insert(rec.phn.clone(), idx);
+            }
+            Some(&best) => {
+                // Keep the record with the newest `mrp_updated` date. Ties and
+                // missing dates resolve to first-seen (the current best).
+                let best_date = records[best].mrp_updated;
+                let cand_date = rec.mrp_updated;
+                let prefer_candidate = match (best_date, cand_date) {
+                    (Some(b), Some(c)) => c > b,
+                    (None, Some(_)) => true, // candidate has a date, best doesn't
+                    _ => false,              // best has a date, or both None
+                };
+                if prefer_candidate {
+                    winner_by_phn.insert(rec.phn.clone(), idx);
+                }
+                dropped += 1;
+            }
         }
     }
 
-    // Sort keep_indices to preserve original row order
+    // Winning indices, restored to original row order.
+    let mut keep_indices: Vec<usize> = winner_by_phn.into_values().collect();
     keep_indices.sort_unstable();
 
+    // Move owned records out by index instead of cloning each kept record.
+    // Wrapping in Option lets us take() each winner; non-winners are dropped
+    // when `slots` goes out of scope.
+    let mut slots: Vec<Option<PasRecord>> = records.into_iter().map(Some).collect();
     let kept = keep_indices
         .into_iter()
-        .map(|idx| records[idx].clone())
+        .map(|idx| slots[idx].take().expect("winner index always valid"))
         .collect();
 
     (kept, dropped)
