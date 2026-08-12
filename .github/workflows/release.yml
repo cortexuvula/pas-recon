@@ -21,7 +21,7 @@ jobs:
           - platform: ubuntu-22.04
             args: ""
           - platform: windows-latest
-            args: ""
+            args: "--config signing-config.json"
 
     runs-on: ${{ matrix.platform }}
     timeout-minutes: 30
@@ -56,6 +56,27 @@ jobs:
           APPLE_API_KEY_CONTENT: ${{ secrets.APPLE_API_KEY_CONTENT }}
         run: echo "$APPLE_API_KEY_CONTENT" > "${{ runner.temp }}/apple_api_key.p8"
 
+      - name: Install .NET sign tool (Windows)
+        if: matrix.platform == 'windows-latest'
+        shell: pwsh
+        run: |
+          dotnet tool install -g --prerelease sign
+          "$env:USERPROFILE\.dotnet\tools" >> $env:GITHUB_PATH
+
+      - name: Generate Azure signing config (Windows)
+        if: matrix.platform == 'windows-latest'
+        shell: pwsh
+        env:
+          AZURE_ENDPOINT: ${{ secrets.AZURE_ENDPOINT }}
+          AZURE_ACCOUNT: ${{ secrets.AZURE_ACCOUNT }}
+          AZURE_PROFILE: ${{ secrets.AZURE_PROFILE }}
+        run: |
+          # Resolve sign.exe with forward slashes (backslashes break Tauri's signCommand parsing).
+          $signExe = (Get-Command sign).Source -replace '\\', '/'
+          $signCmd = "$signExe code artifact-signing --timestamp-url http://timestamp.acs.microsoft.com --artifact-signing-endpoint $env:AZURE_ENDPOINT --artifact-signing-account $env:AZURE_ACCOUNT --artifact-signing-certificate-profile $env:AZURE_PROFILE %1"
+          $config = @{ bundle = @{ windows = @{ signCommand = $signCmd } } } | ConvertTo-Json -Depth 3 -Compress
+          Set-Content -Path "crates/app/signing-config.json" -Value $config
+
       - uses: tauri-apps/tauri-action@v0.5.19
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -69,6 +90,11 @@ jobs:
           APPLE_API_KEY_PATH: ${{ runner.temp }}/apple_api_key.p8
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
+          # Azure Trusted Signing (Artifact Signing) — used by the dotnet `sign`
+          # tool invoked via bundle.windows.signCommand on the Windows leg.
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
         with:
           projectPath: crates/app
           tagName: ${{ github.ref_name }}
