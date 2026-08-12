@@ -28,6 +28,25 @@ fn field(fields: &[String], idx: Option<usize>) -> Option<String> {
         .filter(|s| !s.is_empty())
 }
 
+/// Case-insensitive string comparison without allocating lowercased strings
+/// (used by the list sorter, which runs O(n log n) comparisons).
+fn ci_cmp(a: &str, b: &str) -> std::cmp::Ordering {
+    use std::cmp::Ordering;
+    let mut ai = a.chars().flat_map(|c| c.to_lowercase());
+    let mut bi = b.chars().flat_map(|c| c.to_lowercase());
+    loop {
+        match (ai.next(), bi.next()) {
+            (Some(x), Some(y)) => match x.cmp(&y) {
+                Ordering::Equal => continue,
+                non_eq => return non_eq,
+            },
+            (Some(_), None) => return Ordering::Greater,
+            (None, Some(_)) => return Ordering::Less,
+            (None, None) => return Ordering::Equal,
+        }
+    }
+}
+
 /// Build a DisplayRow from a raw CSV row that failed PHN validation.
 /// Shows the raw (invalid) PHN and any detected name/date fields for context.
 fn raw_row_to_display(
@@ -167,6 +186,11 @@ fn map_detection_error(err: DetectionError, source: CsvSource) -> EngineError {
             source: source.to_string(),
             candidates,
         },
+        DetectionError::AmbiguousColumn { field, candidates } => EngineError::AmbiguousColumn {
+            source: source.to_string(),
+            field: field.to_string(),
+            candidates,
+        },
     }
 }
 
@@ -191,16 +215,31 @@ fn map_parse_error(err: crate::parse::ParseError, source: CsvSource) -> EngineEr
 /// Detect all columns except PHN, then inject the user-provided PHN index.
 /// This is used when auto-detection can't find a PHN header — the manual
 /// column picker provides the index directly.
+///
+/// Returns an error if `phn_idx` is out of range for the file's headers
+/// (previously this was silently clamped to the last column, which hid picker
+/// mistakes by reading the wrong column).
 fn detect_columns_with_phn_override(
     headers: &[String],
     is_pas: bool,
     phn_idx: usize,
-) -> ColumnMapping {
-    use crate::detect::{find_column, DOB_PATTERNS, FIRST_PATTERNS, LAST_PATTERNS, STATUS_PATTERNS, UPDATED_PATTERNS};
+    source: CsvSource,
+) -> Result<ColumnMapping, EngineError> {
+    use crate::detect::{
+        find_column, DOB_PATTERNS, FIRST_PATTERNS, LAST_PATTERNS, STATUS_PATTERNS,
+        UPDATED_PATTERNS,
+    };
 
-    // Clamp phn_idx to valid range to prevent out-of-bounds access
-    let phn_idx = phn_idx.min(headers.len().saturating_sub(1));
+    if headers.is_empty() || phn_idx >= headers.len() {
+        return Err(EngineError::InvalidColumnIndex {
+            source: source.to_string(),
+            index: phn_idx,
+            header_count: headers.len(),
+        });
+    }
 
+    // Optional fields use best-effort matching (first among ties). The manual
+    // picker only selects PHN, so ambiguity here must not block the run.
     let (mrp_status, mrp_updated) = if is_pas {
         (
             find_column(headers, STATUS_PATTERNS),
@@ -210,14 +249,14 @@ fn detect_columns_with_phn_override(
         (None, None)
     };
 
-    ColumnMapping {
+    Ok(ColumnMapping {
         phn: phn_idx,
         first_name: find_column(headers, FIRST_PATTERNS),
         last_name: find_column(headers, LAST_PATTERNS),
         dob: find_column(headers, DOB_PATTERNS),
         mrp_status,
         mrp_updated,
-    }
+    })
 }
 
 /// Run the full pipeline. `emr_phn_column` / `pas_phn_column` override auto-detection
@@ -237,14 +276,14 @@ pub fn reconcile_with_columns(
     // auto-detection entirely and only detect the other fields. This avoids
     // MissingPhnColumn errors when the header doesn't match known patterns.
     let emr_mapping = if let Some(phn_idx) = emr_phn_override {
-        detect_columns_with_phn_override(&emr_parsed.headers, false, phn_idx)
+        detect_columns_with_phn_override(&emr_parsed.headers, false, phn_idx, CsvSource::Emr)?
     } else {
         detect_columns(&emr_parsed.headers, false)
             .map_err(|e| map_detection_error(e, CsvSource::Emr))?
     };
 
     let pas_mapping = if let Some(phn_idx) = pas_phn_override {
-        detect_columns_with_phn_override(&pas_parsed.headers, true, phn_idx)
+        detect_columns_with_phn_override(&pas_parsed.headers, true, phn_idx, CsvSource::Pas)?
     } else {
         detect_columns(&pas_parsed.headers, true)
             .map_err(|e| map_detection_error(e, CsvSource::Pas))?
@@ -319,11 +358,16 @@ pub fn reconcile_with_columns(
 
     // --- Sort lists by last name, then first name ---
     let sort_fn = |a: &DisplayRow, b: &DisplayRow| {
-        let a_last = a.last_name.as_deref().unwrap_or("").to_lowercase();
-        let b_last = b.last_name.as_deref().unwrap_or("").to_lowercase();
-        let a_first = a.first_name.as_deref().unwrap_or("").to_lowercase();
-        let b_first = b.first_name.as_deref().unwrap_or("").to_lowercase();
-        a_last.cmp(&b_last).then_with(|| a_first.cmp(&b_first))
+        ci_cmp(
+            a.last_name.as_deref().unwrap_or(""),
+            b.last_name.as_deref().unwrap_or(""),
+        )
+        .then_with(|| {
+            ci_cmp(
+                a.first_name.as_deref().unwrap_or(""),
+                b.first_name.as_deref().unwrap_or(""),
+            )
+        })
     };
     emr_no_match.sort_by(sort_fn);
     pas_match_review.sort_by(sort_fn);

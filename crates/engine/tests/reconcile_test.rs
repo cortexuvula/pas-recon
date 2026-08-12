@@ -160,13 +160,18 @@ fn manual_phn_column_override_drives_matching() {
 }
 
 #[test]
-fn manual_phn_override_clamps_out_of_range_index() {
+fn manual_phn_override_rejects_out_of_range_index() {
     let emr = b"PHN,Name\n9876543218,John\n";
     let pas = b"PHN,Status\n9876543218,Confirmed\n";
-    // phn_idx = 99 clamps to last column ("Name"), which fails PHN validation.
-    let result = reconcile_with_columns(emr, pas, Some(99), Some(0)).unwrap();
-    assert!(result.summary.invalid_phn_skipped >= 1,
-        "out-of-range override should clamp and produce invalid rows");
+    // An out-of-range PHN override (99 vs 2 headers) must now surface as an
+    // error rather than silently clamping to the last column.
+    let result = reconcile_with_columns(emr, pas, Some(99), Some(0));
+    assert!(result.is_err(), "out-of-range override should error, not clamp");
+    let msg = format!("{}", result.unwrap_err());
+    assert!(
+        msg.contains("out of range"),
+        "error should mention out-of-range index, got: {msg}"
+    );
 }
 
 // --- C2: Matched review-worthy statuses ---

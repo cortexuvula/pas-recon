@@ -64,6 +64,20 @@ pub enum EngineError {
     MissingPhnColumn { source: String },
 
     AmbiguousPhnColumns { source: String, candidates: Vec<String> },
+
+    /// A non-PHN field matched multiple columns equally well.
+    AmbiguousColumn {
+        source: String,
+        field: String,
+        candidates: Vec<String>,
+    },
+
+    /// A user-provided PHN column index was out of range for the file's headers.
+    InvalidColumnIndex {
+        source: String,
+        index: usize,
+        header_count: usize,
+    },
 }
 
 impl std::fmt::Display for EngineError {
@@ -80,6 +94,22 @@ impl std::fmt::Display for EngineError {
             }
             EngineError::AmbiguousPhnColumns { source, candidates } => {
                 write!(f, "multiple columns in {source} CSV look like PHNs: {candidates:?}")
+            }
+            EngineError::AmbiguousColumn { source, field, candidates } => {
+                write!(
+                    f,
+                    "multiple {field} columns in {source} CSV: {candidates:?}"
+                )
+            }
+            EngineError::InvalidColumnIndex {
+                source,
+                index,
+                header_count,
+            } => {
+                write!(
+                    f,
+                    "selected {source} PHN column index {index} is out of range (file has {header_count} columns)"
+                )
             }
         }
     }

@@ -62,3 +62,42 @@ fn pas_fields_not_detected_in_emr_mode() {
     assert_eq!(mapping.mrp_status, None);
     assert_eq!(mapping.mrp_updated, None);
 }
+
+#[test]
+fn specificity_picks_best_match_over_header_position() {
+    // "Last" (bare) is a substring of both "Last Name" and "Last Updated".
+    // last_name must resolve to "Last Name" (exact "last name", score 3) and
+    // mrp_updated to "Last Updated" (exact "last updated", score 3) — not the
+    // first header positionally that contains "last".
+    let parsed = parse_csv(&headers_csv(&[
+        "PHN", "Last Updated", "Last Name",
+    ]))
+    .unwrap();
+    let mapping = detect_columns(&parsed.headers, true).unwrap();
+    assert_eq!(mapping.last_name, Some(2), "Last Name should win for last_name");
+    assert_eq!(
+        mapping.mrp_updated,
+        Some(1),
+        "Last Updated should win for mrp_updated, not be grabbed by the bare 'last' pattern"
+    );
+}
+
+#[test]
+fn ambiguous_optional_column_returns_error() {
+    // Two equally-good DOB columns is ambiguous and must surface, not silently
+    // pick the first.
+    let parsed = parse_csv(&headers_csv(&["PHN", "DOB", "Date of Birth"])).unwrap();
+    let result = detect_columns(&parsed.headers, false);
+    assert!(
+        matches!(result, Err(DetectionError::AmbiguousColumn { .. })),
+        "two DOB columns should be ambiguous, got {result:?}"
+    );
+}
+
+#[test]
+fn ambiguous_status_column_returns_error() {
+    let parsed =
+        parse_csv(&headers_csv(&["PHN", "MRP Status", "Attachment Status"])).unwrap();
+    let result = detect_columns(&parsed.headers, true);
+    assert!(matches!(result, Err(DetectionError::AmbiguousColumn { field, .. }) if field == "MRP status"));
+}
