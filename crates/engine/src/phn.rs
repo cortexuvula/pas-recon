@@ -4,13 +4,16 @@
 //! MOD 11 check digit in position 10. Normalization strips spaces,
 //! hyphens, and non-breaking spaces before checking.
 
-/// Strip spaces, hyphens, non-breaking spaces, and surrounding whitespace
-/// from a PHN-like string, leaving only the digits (and any other chars).
-/// Also collapses internal whitespace runs (e.g. "9876  543  210").
+/// Remove whitespace and hyphens from a PHN-like string, leaving every other
+/// character in place. Validation ([`is_valid_bc_phn`]) separately rejects the
+/// result if it isn't exactly 10 digits.
+///
+/// This covers the full range of separators seen when PHNs are pasted from
+/// spreadsheets, PDFs, or web pages: ASCII spaces and tabs, non-breaking
+/// spaces, newlines, and other Unicode whitespace, plus hyphens. Characters
+/// are removed (not collapsed), so `"9876  543  210"` becomes `"9876543210"`.
 pub fn normalize_phn(raw: &str) -> String {
-    raw.chars()
-        .filter(|c| !matches!(c, ' ' | '-' | '\u{00A0}' | '\t'))
-        .collect()
+    raw.chars().filter(|c| !c.is_whitespace() && *c != '-').collect()
 }
 
 /// Verify the MOD 11 check digit for a 10-digit BC PHN.
@@ -70,6 +73,14 @@ mod tests {
         assert_eq!(normalize_phn("9876-543-210"), "9876543210");
         assert_eq!(normalize_phn("9876\u{00A0}543\u{00A0}210"), "9876543210");
         assert_eq!(normalize_phn(" 9876543210 "), "9876543210");
+    }
+
+    #[test]
+    fn test_normalize_strips_any_whitespace_runs() {
+        // Tabs, newlines, and multi-space runs are all removed (not collapsed).
+        assert_eq!(normalize_phn("9876\t543\n210"), "9876543210");
+        assert_eq!(normalize_phn("9876  543  210"), "9876543210");
+        assert_eq!(normalize_phn("9876\r\n543 210"), "9876543210");
     }
 
     #[test]
