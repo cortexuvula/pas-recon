@@ -21,6 +21,9 @@ pub struct Summary {
     pub duplicates_dropped: usize,
     pub invalid_phn_skipped: usize,
     pub unparseable_dates: usize,
+    /// Rows that had more fields than the header and were truncated (extra
+    /// trailing fields dropped) across both files.
+    pub truncated_rows: usize,
 }
 
 #[derive(Debug, Clone, Default, serde::Serialize)]

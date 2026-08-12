@@ -7,6 +7,10 @@ use crate::model::RawRow;
 pub struct ParsedCsv {
     pub headers: Vec<String>,
     pub rows: Vec<RawRow>,
+    /// Number of data rows that had more fields than the header and were
+    /// truncated (extra trailing fields dropped). Surfaced so callers can warn
+    /// the user that data may have been lost.
+    pub truncated_rows: usize,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -48,6 +52,7 @@ pub fn parse_csv(input: &[u8]) -> Result<ParsedCsv, ParseError> {
     let header_len = headers.len();
     let mut rows = Vec::new();
     let mut row_index = 0usize;
+    let mut truncated_rows = 0usize;
 
     for (line_no, record) in rdr.records().enumerate() {
         let record = record.map_err(|e| ParseError::Read {
@@ -57,11 +62,13 @@ pub fn parse_csv(input: &[u8]) -> Result<ParsedCsv, ParseError> {
 
         let mut fields: Vec<String> = record.iter().map(|s| s.to_string()).collect();
 
-        // Pad or truncate to match header length
+        // Pad or truncate to match header length. Truncation drops data, so we
+        // count those rows and surface the total to the caller.
         if fields.len() < header_len {
             fields.resize(header_len, String::new());
         } else if fields.len() > header_len {
             fields.truncate(header_len);
+            truncated_rows += 1;
         }
 
         rows.push(RawRow { fields, row_index });
@@ -72,5 +79,9 @@ pub fn parse_csv(input: &[u8]) -> Result<ParsedCsv, ParseError> {
         return Err(ParseError::HeaderOnly);
     }
 
-    Ok(ParsedCsv { headers, rows })
+    Ok(ParsedCsv {
+        headers,
+        rows,
+        truncated_rows,
+    })
 }

@@ -32,6 +32,22 @@ fn ignores_extra_columns_beyond_header() {
     let csv_bytes = b"A,B\n1,2,3,4\n";
     let result = parse_csv(csv_bytes).unwrap();
     assert_eq!(result.rows[0].fields, vec!["1", "2"]); // truncated to header length
+    assert_eq!(result.truncated_rows, 1, "over-long rows must be counted");
+}
+
+#[test]
+fn counts_truncated_rows_across_many() {
+    let csv_bytes = b"A,B\n1,2\n3,4,5\n6,7,8,9\n";
+    let result = parse_csv(csv_bytes).unwrap();
+    assert_eq!(result.rows.len(), 3);
+    assert_eq!(result.truncated_rows, 2);
+}
+
+#[test]
+fn truncated_rows_zero_when_all_rows_fit_header() {
+    let csv_bytes = b"A,B\n1,2\n3,4\n";
+    let result = parse_csv(csv_bytes).unwrap();
+    assert_eq!(result.truncated_rows, 0);
 }
 
 #[test]

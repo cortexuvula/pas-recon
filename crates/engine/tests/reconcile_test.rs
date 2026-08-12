@@ -237,3 +237,15 @@ fn status_classification_is_case_insensitive() {
     assert_eq!(result.summary.status_breakdown.pending, 1,
         "uppercase PENDING must still tally as pending");
 }
+
+// --- C6: Truncation surfacing ---
+
+#[test]
+fn summary_surfaces_truncated_rows() {
+    // EMR header has 2 columns; one row has 4 fields → truncated (PHN kept).
+    let emr = b"PHN,Name\n9876543218,John,extra,fields\n";
+    let pas = b"PHN,Status\n9876543218,Confirmed\n";
+    let result = reconcile(&emr[..], &pas[..]).unwrap();
+    assert_eq!(result.summary.truncated_rows, 1);
+    assert_eq!(result.summary.matched, 1, "PHN is still readable after truncation");
+}

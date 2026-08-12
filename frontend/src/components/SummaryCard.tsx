@@ -24,11 +24,12 @@ export default function SummaryCard({ summary }: SummaryCardProps) {
         <span style={{ color: "var(--purple)" }}>● Review</span>
         <strong>{summary.pas_review}</strong>
       </div>
-      {(summary.duplicates_dropped > 0 || summary.invalid_phn_skipped > 0 || summary.unparseable_dates > 0) && (
+      {(summary.duplicates_dropped > 0 || summary.invalid_phn_skipped > 0 || summary.unparseable_dates > 0 || summary.truncated_rows > 0) && (
         <div style={{ marginTop: "8px", fontSize: "12px", color: "var(--red)", fontWeight: 600, whiteSpace: "pre-line" }}>
           {summary.duplicates_dropped > 0 && `⚠ ${summary.duplicates_dropped} duplicates dropped\n`}
           {summary.invalid_phn_skipped > 0 && `⚠ ${summary.invalid_phn_skipped} invalid PHNs skipped\n`}
-          {summary.unparseable_dates > 0 && `⚠ ${summary.unparseable_dates} unparseable dates (dedup may have kept wrong record)`}
+          {summary.unparseable_dates > 0 && `⚠ ${summary.unparseable_dates} unparseable dates (dedup may have kept wrong record)\n`}
+          {summary.truncated_rows > 0 && `⚠ ${summary.truncated_rows} rows had extra columns truncated (data may be missing)\n`}
         </div>
       )}
     </div>

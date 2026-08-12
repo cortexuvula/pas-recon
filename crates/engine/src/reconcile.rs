@@ -383,6 +383,7 @@ pub fn reconcile_with_columns(
         duplicates_dropped,
         invalid_phn_skipped: invalid_phns.len(),
         unparseable_dates: bad_dates,
+        truncated_rows: emr_parsed.truncated_rows + pas_parsed.truncated_rows,
     };
 
     Ok(ReconciliationResult {

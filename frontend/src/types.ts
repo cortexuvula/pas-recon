@@ -15,6 +15,7 @@ export interface Summary {
   duplicates_dropped: number;
   invalid_phn_skipped: number;
   unparseable_dates: number;
+  truncated_rows: number;
 }
 
 export interface StatusBreakdown {
