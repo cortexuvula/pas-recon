@@ -16,6 +16,9 @@ frontend/dist/
 crates/app/.updater-key
 .env
 .env.*
+# Keep committed example/template env files tracked.
+!.env.example
+!.env.template
 *.pem
 *.key
 

@@ -13,6 +13,47 @@ interface PatientTableProps {
   searchQuery: string;
 }
 
+// Hoisted out of PatientTable so it isn't redefined (and its button remounted,
+// losing focus/canceling clicks) on every parent render.
+function SortHeader({
+  label,
+  column,
+  activeKey,
+  dir,
+  onSort,
+}: {
+  label: string;
+  column: SortKey;
+  activeKey: SortKey;
+  dir: SortDir;
+  onSort: (key: SortKey) => void;
+}) {
+  const active = activeKey === column;
+  return (
+    <th>
+      <button
+        type="button"
+        onClick={() => onSort(column)}
+        style={{
+          background: "none",
+          border: "none",
+          color: active ? "var(--text)" : "var(--text-faint)",
+          cursor: "pointer",
+          font: "inherit",
+          padding: 0,
+          textAlign: "left",
+          fontWeight: active ? 700 : 500,
+          fontSize: "12px",
+          whiteSpace: "nowrap",
+        }}
+      >
+        {label}
+        {active && (dir === "asc" ? " \u25B2" : " \u25BC")}
+      </button>
+    </th>
+  );
+}
+
 export default function PatientTable({
   rows, showStatus, showSource, resolvedSet, onToggleResolved, searchQuery
 }: PatientTableProps) {
@@ -29,17 +70,17 @@ export default function PatientTable({
   };
 
   const filtered = useMemo(() => {
-    let result = rows;
-    if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase();
-      result = result.filter((r) =>
-        r.phn.toLowerCase().includes(q) ||
-        (r.first_name?.toLowerCase().includes(q) ?? false) ||
-        (r.last_name?.toLowerCase().includes(q) ?? false) ||
-        (r.source?.toLowerCase().includes(q) ?? false)
-      );
-    }
-    return result;
+    // Filter on the trimmed, lowercased query so leading/trailing spaces don't
+    // cause the previous bug (trim checked for emptiness but matching used the
+    // raw value).
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return rows;
+    return rows.filter((r) =>
+      r.phn.toLowerCase().includes(q) ||
+      (r.first_name?.toLowerCase().includes(q) ?? false) ||
+      (r.last_name?.toLowerCase().includes(q) ?? false) ||
+      (r.source?.toLowerCase().includes(q) ?? false)
+    );
   }, [rows, searchQuery]);
 
   const sorted = useMemo(() => {
@@ -50,38 +91,16 @@ export default function PatientTable({
     return [...filtered].sort((a, b) => {
       const av = getVal(a);
       const bv = getVal(b);
-      // Empty/null values sort to bottom in ascending, top in descending
+      // Empty/null values sort to the bottom in ascending and to the top in
+      // descending, consistent with the sort direction (previously they were
+      // pinned to the bottom in both directions).
       if (!av && !bv) return 0;
-      if (!av) return 1;
-      if (!bv) return -1;
+      if (!av) return sortDir === "asc" ? 1 : -1;
+      if (!bv) return sortDir === "asc" ? -1 : 1;
       const cmp = av.localeCompare(bv);
       return sortDir === "asc" ? cmp : -cmp;
     });
   }, [filtered, sortKey, sortDir]);
-
-  const SortHeader = ({ label, sortKey: key }: { label: string; sortKey: SortKey }) => (
-    <th>
-      <button
-        type="button"
-        onClick={() => handleSort(key)}
-        style={{
-          background: "none",
-          border: "none",
-          color: sortKey === key ? "var(--text)" : "var(--text-faint)",
-          cursor: "pointer",
-          font: "inherit",
-          padding: 0,
-          textAlign: "left",
-          fontWeight: sortKey === key ? 700 : 500,
-          fontSize: "12px",
-          whiteSpace: "nowrap",
-        }}
-      >
-        {label}
-        {sortKey === key && (sortDir === "asc" ? " \u25B2" : " \u25BC")}
-      </button>
-    </th>
-  );
 
   if (sorted.length === 0) {
     return (
@@ -96,20 +115,20 @@ export default function PatientTable({
       <table>
         <thead>
           <tr>
-            {showSource && <SortHeader label="Source" sortKey="source" />}
-            <SortHeader label="PHN" sortKey="phn" />
-            <SortHeader label="First Name" sortKey="first_name" />
-            <SortHeader label="Last Name" sortKey="last_name" />
-            <SortHeader label="DOB" sortKey="dob" />
-            {showStatus && <SortHeader label="Status" sortKey="mrp_status" />}
+            {showSource && <SortHeader label="Source" column="source" activeKey={sortKey} dir={sortDir} onSort={handleSort} />}
+            <SortHeader label="PHN" column="phn" activeKey={sortKey} dir={sortDir} onSort={handleSort} />
+            <SortHeader label="First Name" column="first_name" activeKey={sortKey} dir={sortDir} onSort={handleSort} />
+            <SortHeader label="Last Name" column="last_name" activeKey={sortKey} dir={sortDir} onSort={handleSort} />
+            <SortHeader label="DOB" column="dob" activeKey={sortKey} dir={sortDir} onSort={handleSort} />
+            {showStatus && <SortHeader label="Status" column="mrp_status" activeKey={sortKey} dir={sortDir} onSort={handleSort} />}
           </tr>
         </thead>
         <tbody>
-          {sorted.map((row, i) => {
+          {sorted.map((row) => {
             const isResolved = resolvedSet.has(row.phn);
             return (
             <tr
-              key={`${row.phn}-${row.last_name ?? ""}-${i}`}
+              key={row.phn}
               className={isResolved ? "resolved" : ""}
               tabIndex={0}
               role="switch"

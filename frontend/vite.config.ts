@@ -9,7 +9,10 @@ export default defineConfig({
     port: 5173,
     strictPort: true,
   },
-  envPrefix: ["VITE_", "TAURI_"],
+  // Only expose VITE_-prefixed env vars to the client bundle. Exposing TAURI_
+  // (e.g. TAURI_SIGNING_PRIVATE_KEY) would risk leaking build-time secrets into
+  // the shipped webview. Explicitly allowlist any var the frontend needs instead.
+  envPrefix: ["VITE_"],
   define: {
     __APP_VERSION__: JSON.stringify(pkg.version),
   },
