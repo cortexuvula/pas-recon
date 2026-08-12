@@ -21,7 +21,9 @@ fn main() {
             let handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {
                 tokio::time::sleep(std::time::Duration::from_secs(3)).await;
-                let _ = update::check_and_notify(&handle).await;
+                if let Err(e) = update::check_and_notify(&handle).await {
+                    eprintln!("update notification check failed: {e}");
+                }
             });
             Ok(())
         })
