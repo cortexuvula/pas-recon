@@ -12,6 +12,12 @@ use chrono::NaiveDate;
 const EXCEL_EPOCH: NaiveDate = NaiveDate::from_ymd_opt(1899, 12, 30).unwrap();
 
 /// Convert an Excel serial date number to a NaiveDate.
+///
+/// Uses the 1899-12-30 epoch, which is exactly correct for serials >= 61
+/// (1900-03-01 onward). Excel wrongly treats 1900 as a leap year, so serials
+/// 1..=60 render as 1900-01-01 .. 1900-02-29 in Excel but are off by one day
+/// under this epoch (and serial 60 is the non-existent 1900-02-29). Those are
+/// not real MRP dates, so we reject serial < 61 rather than return a wrong day.
 pub fn serial_to_date(serial: f64) -> Option<NaiveDate> {
     // Reject NaN/inf first. NaN comparisons against the bounds below are always
     // false, so without this guard NaN would pass and `NaN as i64` becomes 0,
@@ -20,8 +26,8 @@ pub fn serial_to_date(serial: f64) -> Option<NaiveDate> {
     if !serial.is_finite() {
         return None;
     }
-    if serial < 1.0 || serial > 100000.0 {
-        return None; // sanity bounds
+    if serial < 61.0 || serial > 100000.0 {
+        return None; // sanity bounds; < 61 covers the 1900 fictitious-Feb-29 range
     }
     let days = serial.floor() as i64;
     EXCEL_EPOCH.checked_add_days(chrono::Days::new(days as u64))

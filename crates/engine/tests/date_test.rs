@@ -65,3 +65,23 @@ fn single_digit_day_and_month_in_slash_date() {
         NaiveDate::from_ymd_opt(2024, 3, 5)
     );
 }
+
+#[test]
+fn rejects_nan_serial() {
+    assert!(serial_to_date(f64::NAN).is_none());
+    assert!(serial_to_date(f64::INFINITY).is_none());
+    assert!(serial_to_date(f64::NEG_INFINITY).is_none());
+}
+
+#[test]
+fn rejects_excel_1900_off_by_one_range() {
+    // Serials 1..=60 map to Excel's 1900-01-01 .. fictitious 1900-02-29, which
+    // are off by one day under the 1899-12-30 epoch (and serial 60 is the
+    // non-existent Feb 29). These can't be real MRP dates, so reject them
+    // rather than return a silently-wrong day.
+    assert!(serial_to_date(1.0).is_none());
+    assert!(serial_to_date(60.0).is_none());
+    assert!(parse_mrp_date("60").is_none());
+    // Serial 61 = 1900-03-01, the first serial the epoch maps exactly.
+    assert_eq!(serial_to_date(61.0), NaiveDate::from_ymd_opt(1900, 3, 1));
+}
