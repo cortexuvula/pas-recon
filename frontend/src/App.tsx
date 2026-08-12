@@ -114,14 +114,27 @@ export default function App() {
     return null;
   };
 
+  // Sequence reconciliation runs so a slower, older run can't overwrite the
+  // result of a newer one (rapid drops/browses can otherwise race). Each run
+  // captures a monotonic id; on resolve it applies state only if it is still
+  // the latest run initiated.
+  const latestRunIdRef = useRef(0);
+
+  const applyResult = useCallback((res: ReconciliationResult) => {
+    setResult(res);
+    setResolved(new Set());
+    setSearchQuery("");
+    setActiveList("emr_no_match");
+  }, []);
+
   const runReconciliation = useCallback(async (emr: string, pas: string) => {
+    const reqId = ++latestRunIdRef.current;
     try {
       const res = await reconcileFiles(emr, pas);
-      setResult(res);
-      setResolved(new Set());
-      setSearchQuery("");
-      setActiveList("emr_no_match");
+      if (reqId !== latestRunIdRef.current) return; // superseded by a newer run
+      applyResult(res);
     } catch (e: any) {
+      if (reqId !== latestRunIdRef.current) return; // superseded
       const errStr = typeof e === "string" ? e : JSON.stringify(e);
       if (errStr.includes("PHN column") || errStr.includes("MissingPhnColumn") || errStr.includes("AmbiguousPhnColumns")) {
         setResult(null);  // clear stale results from a previous reconciliation
@@ -131,7 +144,7 @@ export default function App() {
         setError(humanizeError(errStr));
       }
     }
-  }, []);
+  }, [applyResult]);
 
   const handlePathsDropped = useCallback(async (paths: string[]) => {
     setError(null);
@@ -269,16 +282,16 @@ export default function App() {
     if (!emrPath || !pasPath) return;
     setShowColumnPicker(false);
     setError(null);
+    const reqId = ++latestRunIdRef.current;
     try {
       const res = await reconcileWithColumnOverride(emrPath, pasPath, emrCol, pasCol);
-      setResult(res);
-      setResolved(new Set());
-      setSearchQuery("");
-      setActiveList("emr_no_match");
+      if (reqId !== latestRunIdRef.current) return; // superseded by a newer run
+      applyResult(res);
     } catch (e: any) {
+      if (reqId !== latestRunIdRef.current) return; // superseded
       setError(humanizeError(e));
     }
-  }, [emrPath, pasPath]);
+  }, [emrPath, pasPath, applyResult]);
 
   const handleToggleResolved = useCallback((phn: string) => {
     setResolved((prev) => {
