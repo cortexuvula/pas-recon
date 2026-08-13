@@ -8,6 +8,26 @@ interface DropZoneProps {
   onBrowsePas: () => void;
 }
 
+function FileRow({
+  loaded, filename, fallback, onBrowse,
+}: {
+  loaded: boolean;
+  filename: string;
+  fallback: string;
+  onBrowse: () => void;
+}) {
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+      <span className="drop-zone-file" style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+        {loaded ? "\u2705" : "\u2B1C"} {filename || fallback}
+      </span>
+      <button type="button" className="browse-btn" onClick={onBrowse}>
+        {loaded ? "Change" : "Browse"}
+      </button>
+    </div>
+  );
+}
+
 export default function DropZone({ emrLoaded, pasLoaded, emrFilename, pasFilename, isDragging, onBrowseEmr, onBrowsePas }: DropZoneProps) {
   const prompt =
     !emrLoaded && !pasLoaded ? "Drop CSV files here, or browse:"
@@ -22,22 +42,8 @@ export default function DropZone({ emrLoaded, pasLoaded, emrFilename, pasFilenam
     >
       <div className="drop-zone-label">{prompt}</div>
       <div style={{ display: "flex", flexDirection: "column", gap: "8px", marginTop: "8px" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-          <span className="drop-zone-file" style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-            {emrLoaded ? "\u2705" : "\u2B1C"} {emrFilename || "EMR file"}
-          </span>
-          <button type="button" className="browse-btn" onClick={onBrowseEmr}>
-            {emrLoaded ? "Change" : "Browse"}
-          </button>
-        </div>
-        <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-          <span className="drop-zone-file" style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-            {pasLoaded ? "\u2705" : "\u2B1C"} {pasFilename || "PAS file"}
-          </span>
-          <button type="button" className="browse-btn" onClick={onBrowsePas}>
-            {pasLoaded ? "Change" : "Browse"}
-          </button>
-        </div>
+        <FileRow loaded={emrLoaded} filename={emrFilename} fallback="EMR file" onBrowse={onBrowseEmr} />
+        <FileRow loaded={pasLoaded} filename={pasFilename} fallback="PAS file" onBrowse={onBrowsePas} />
       </div>
     </div>
   );

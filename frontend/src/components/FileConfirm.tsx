@@ -7,6 +7,30 @@ interface FileConfirmProps {
   onSwap: () => void;
 }
 
+function FilePanel({
+  label, labelColor, filename, headers,
+}: {
+  label: string;
+  labelColor: string;
+  filename: string;
+  headers: string[];
+}) {
+  return (
+    <div style={{ flex: 1 }}>
+      <div style={{ fontSize: "12px", fontWeight: 600, color: labelColor, marginBottom: "6px" }}>
+        {label}
+      </div>
+      <div style={{ fontSize: "13px", color: "var(--text)", marginBottom: "6px" }}>
+        {filename}
+      </div>
+      <div style={{ fontSize: "11px", color: "var(--text-faint)" }}>
+        {headers.slice(0, 5).join(", ")}
+        {headers.length > 5 && `… (+${headers.length - 5} more)`}
+      </div>
+    </div>
+  );
+}
+
 export default function FileConfirm({
   emrFilename, pasFilename, emrHeaders, pasHeaders, onConfirm, onSwap
 }: FileConfirmProps) {
@@ -17,30 +41,8 @@ export default function FileConfirm({
         We couldn't automatically determine which file is which. Please verify the assignment below.
       </p>
       <div style={{ display: "flex", gap: "24px", marginBottom: "20px" }}>
-        <div style={{ flex: 1 }}>
-          <div style={{ fontSize: "12px", fontWeight: 600, color: "var(--amber)", marginBottom: "6px" }}>
-            EMR Panel
-          </div>
-          <div style={{ fontSize: "13px", color: "var(--text)", marginBottom: "6px" }}>
-            {emrFilename}
-          </div>
-          <div style={{ fontSize: "11px", color: "var(--text-faint)" }}>
-            {emrHeaders.slice(0, 5).join(", ")}
-            {emrHeaders.length > 5 && `… (+${emrHeaders.length - 5} more)`}
-          </div>
-        </div>
-        <div style={{ flex: 1 }}>
-          <div style={{ fontSize: "12px", fontWeight: 600, color: "var(--blue)", marginBottom: "6px" }}>
-            PAS Patient List
-          </div>
-          <div style={{ fontSize: "13px", color: "var(--text)", marginBottom: "6px" }}>
-            {pasFilename}
-          </div>
-          <div style={{ fontSize: "11px", color: "var(--text-faint)" }}>
-            {pasHeaders.slice(0, 5).join(", ")}
-            {pasHeaders.length > 5 && `… (+${pasHeaders.length - 5} more)`}
-          </div>
-        </div>
+        <FilePanel label="EMR Panel" labelColor="var(--amber)" filename={emrFilename} headers={emrHeaders} />
+        <FilePanel label="PAS Patient List" labelColor="var(--blue)" filename={pasFilename} headers={pasHeaders} />
       </div>
       <div style={{ display: "flex", gap: "8px", justifyContent: "flex-end" }}>
         <button type="button" className="tab" onClick={onSwap}>Swap</button>

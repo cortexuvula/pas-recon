@@ -20,6 +20,14 @@ import {
 } from "./api";
 import type { ReconciliationResult, UpdateInfo, ListKey } from "./types";
 
+/** True if a header set looks like a PAS export (PAS-specific MRP columns). */
+function hasPasSignal(headers: string[]): boolean {
+  return headers.some(h => {
+    const lower = h.toLowerCase();
+    return lower.includes("pas mrp status") || lower.includes("pas mrp updated");
+  });
+}
+
 /** Convert an unknown error value to a user-friendly string. */
 function humanizeError(e: unknown): string {
   const raw = typeof e === "string" ? e : String(e);
@@ -84,11 +92,6 @@ export default function App() {
    * Returns [emrPath, pasPath] if confident, or null if ambiguous.
    */
   const classifyFiles = (headers1: string[], headers2: string[], path1: string, path2: string): [string, string] | null => {
-    const hasPasSignal = (headers: string[]) =>
-      headers.some(h => {
-        const lower = h.toLowerCase();
-        return lower.includes("pas mrp status") || lower.includes("pas mrp updated");
-      });
     const hasFilenameSignal = (path: string, type: "emr" | "pas") =>
       path.toLowerCase().includes(type);
 
@@ -199,12 +202,6 @@ export default function App() {
     setError(null);
     try {
       const headers = await getCsvHeaders(path);
-      const hasPasSignal = (hs: string[]) =>
-        hs.some(h => {
-          const lower = h.toLowerCase();
-          return lower.includes("pas mrp status") || lower.includes("pas mrp updated");
-        });
-
       const isPas = hasPasSignal(headers);
 
       if (isPas) {

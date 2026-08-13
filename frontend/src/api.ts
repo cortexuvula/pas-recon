@@ -3,7 +3,7 @@ import { listen } from "@tauri-apps/api/event";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { open } from "@tauri-apps/plugin-dialog";
 import type { UnlistenFn } from "@tauri-apps/api/event";
-import type { ReconciliationResult, UpdateInfo, DisplayRow, ListKey } from "./types";
+import type { ReconciliationResult, UpdateInfo, DisplayRow } from "./types";
 
 export async function reconcileFiles(emrPath: string, pasPath: string): Promise<ReconciliationResult> {
   return invoke<ReconciliationResult>("reconcile_files", {
@@ -38,10 +38,6 @@ export async function browseForFile(title: string): Promise<string | null> {
     filters: [{ name: "CSV Files", extensions: ["csv"] }],
   });
   return typeof selected === "string" ? selected : null;
-}
-
-export async function checkForUpdates(): Promise<UpdateInfo | null> {
-  return invoke<UpdateInfo | null>("check_for_updates");
 }
 
 export async function getCsvHeaders(path: string): Promise<string[]> {
