@@ -64,9 +64,11 @@ jobs:
         shell: pwsh
         run: |
           # Pin the Azure Trusted Signing `sign` tool to an exact audited
-          # version instead of --prerelease, so upstream prerelease changes
-          # can't affect signed artifacts.
-          dotnet tool install -g --version 1.1.5 sign
+          # prerelease version instead of floating --prerelease, so upstream
+          # changes can't affect signed artifacts. The `sign` tool only ships
+          # as prereleases; stable-looking versions on NuGet are not .NET tools
+          # and fail with "Package sign is not a .NET tool."
+          dotnet tool install -g --version 0.9.1-beta.26371.2 sign
           "$env:USERPROFILE\.dotnet\tools" >> $env:GITHUB_PATH
 
       - name: Generate Azure signing config (Windows)
