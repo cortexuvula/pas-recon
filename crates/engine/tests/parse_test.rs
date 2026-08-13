@@ -1,4 +1,4 @@
-use pas_recon_engine::parse::{parse_csv, ParsedCsv};
+use pas_recon_engine::parse::{parse_csv, read_csv_headers, ParsedCsv};
 
 #[test]
 fn parses_basic_csv_with_header_and_rows() {
@@ -67,4 +67,31 @@ fn returns_error_for_empty_input() {
 fn returns_error_for_header_only() {
     let result = parse_csv(b"A,B,C\n");
     assert!(result.is_err());
+}
+
+#[test]
+fn read_csv_headers_returns_only_headers() {
+    // Only the header record needs to be parsed; data rows are ignored.
+    let csv = b"PHN,Name,DOB\n9876543210,John,1965\n9871111222,Mary,1978\n";
+    let headers = read_csv_headers(&csv[..]).unwrap();
+    assert_eq!(headers, vec!["PHN", "Name", "DOB"]);
+}
+
+#[test]
+fn read_csv_headers_strips_bom() {
+    let csv = b"\xEF\xBB\xBFPHN,Name\n9876543210,John\n";
+    let headers = read_csv_headers(&csv[..]).unwrap();
+    assert_eq!(headers[0], "PHN");
+}
+
+#[test]
+fn read_csv_headers_accepts_header_only_input() {
+    // Unlike parse_csv, a header with no data rows is fine for a header fetch.
+    let headers = read_csv_headers(&b"A,B\n"[..]).unwrap();
+    assert_eq!(headers, vec!["A", "B"]);
+}
+
+#[test]
+fn read_csv_headers_errors_on_empty() {
+    assert!(read_csv_headers(&b""[..]).is_err());
 }

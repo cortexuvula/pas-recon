@@ -181,14 +181,17 @@ tr:nth-child(even) td {{ background: #f9fafb; }}
     ));
 
     for row in rows {
-        body.push_str(&format!(
-            "<tr><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td></tr>\n",
-            html_escape(&row.phn),
-            html_escape(row.first_name.as_deref().unwrap_or("")),
-            html_escape(row.last_name.as_deref().unwrap_or("")),
-            html_escape(row.dob.as_deref().unwrap_or("")),
-            html_escape(row.mrp_status.as_deref().unwrap_or("")),
-        ));
+        body.push_str("<tr><td>");
+        html_escape_into(&mut body, &row.phn);
+        body.push_str("</td><td>");
+        html_escape_into(&mut body, row.first_name.as_deref().unwrap_or(""));
+        body.push_str("</td><td>");
+        html_escape_into(&mut body, row.last_name.as_deref().unwrap_or(""));
+        body.push_str("</td><td>");
+        html_escape_into(&mut body, row.dob.as_deref().unwrap_or(""));
+        body.push_str("</td><td>");
+        html_escape_into(&mut body, row.mrp_status.as_deref().unwrap_or(""));
+        body.push_str("</td></tr>\n");
     }
 
     body.push_str("</tbody></table>\n</body>\n</html>\n");
@@ -207,23 +210,38 @@ tr:nth-child(even) td {{ background: #f9fafb; }}
     Ok(())
 }
 
+/// Append HTML-escaped `s` to `out` in a single pass, avoiding the per-replace
+/// String allocations of the old chained `.replace()` implementation. Used for
+/// the per-cell hot loop in [`export_html`].
+fn html_escape_into(out: &mut String, s: &str) {
+    for c in s.chars() {
+        match c {
+            '&' => out.push_str("&amp;"),
+            '<' => out.push_str("&lt;"),
+            '>' => out.push_str("&gt;"),
+            '"' => out.push_str("&quot;"),
+            c => out.push(c),
+        }
+    }
+}
+
 /// Escape HTML special characters to prevent injection in the generated HTML.
 fn html_escape(s: &str) -> String {
-    s.replace('&', "&amp;")
-        .replace('<', "&lt;")
-        .replace('>', "&gt;")
-        .replace('"', "&quot;")
+    let mut out = String::with_capacity(s.len());
+    html_escape_into(&mut out, s);
+    out
 }
 
 /// Read just the header row of a CSV file. Used by the column-picker fallback
-/// when auto-detection fails. Offloaded to a blocking thread.
+/// when auto-detection fails. Streams the file and parses only the header
+/// record, so a header fetch on a large file doesn't read/parse every row.
+/// Offloaded to a blocking thread.
 #[tauri::command]
 pub async fn get_csv_headers(path: String) -> Result<Vec<String>, String> {
     tauri::async_runtime::spawn_blocking(move || {
         validate_path(&path)?;
-        let bytes = std::fs::read(&path).map_err(|e| e.to_string())?;
-        let parsed = pas_recon_engine::parse::parse_csv(&bytes).map_err(|e| e.to_string())?;
-        Ok(parsed.headers)
+        let file = std::fs::File::open(&path).map_err(|e| e.to_string())?;
+        pas_recon_engine::parse::read_csv_headers(file).map_err(|e| e.to_string())
     })
     .await
     .map_err(|e| format!("background task failed: {e}"))?

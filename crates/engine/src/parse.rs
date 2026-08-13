@@ -23,6 +23,46 @@ pub enum ParseError {
     Read { line: usize, message: String },
 }
 
+/// Read only the header row from a CSV stream, without parsing data rows.
+///
+/// Used by the column-picker fallback so a header fetch on a large file does
+/// not read or parse the entire file. Strips a leading UTF-8 BOM. Does not
+/// require data rows (unlike [`parse_csv`]); only fails on a truly empty input.
+pub fn read_csv_headers<R: std::io::Read>(reader: R) -> Result<Vec<String>, ParseError> {
+    use std::io::BufRead;
+
+    let mut buf = std::io::BufReader::new(reader);
+    // Strip an optional leading UTF-8 BOM without buffering the whole file.
+    let preamble = buf.fill_buf().map_err(|e| ParseError::Read {
+        line: 1,
+        message: e.to_string(),
+    })?;
+    if preamble.starts_with(b"\xEF\xBB\xBF") {
+        buf.consume(3);
+    }
+
+    let mut rdr = csv::ReaderBuilder::new()
+        .flexible(true)
+        .has_headers(true)
+        .trim(csv::Trim::All)
+        .from_reader(buf);
+
+    let headers: Vec<String> = rdr
+        .headers()
+        .map_err(|e| ParseError::Read {
+            line: 1,
+            message: e.to_string(),
+        })?
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
+
+    if headers.is_empty() {
+        return Err(ParseError::Empty);
+    }
+    Ok(headers)
+}
+
 /// Parse CSV bytes into headers + raw rows.
 ///
 /// - Strips a leading BOM.
