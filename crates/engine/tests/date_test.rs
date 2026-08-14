@@ -46,15 +46,15 @@ fn returns_none_for_impossible_date() {
 }
 
 #[test]
-fn two_digit_slash_year_parses_as_literal_year() {
-    // Documents current behaviour: 2-digit years parse literally (year 24 AD),
-    // NOT as 2024. This is a known limitation, not a feature — the spreadsheet
-    // used RIGHT(G8, 4) to extract the full year.
-    assert_eq!(
-        parse_mrp_date("15/03/24"),
-        NaiveDate::from_ymd_opt(24, 3, 15),
-        "2-digit slash years are NOT promoted to 2000s"
-    );
+fn two_digit_slash_years_are_rejected() {
+    // 2-digit years previously parsed literally as year 24 AD — older than
+    // every real date, which silently corrupted dedup ordering. They're now
+    // rejected so the row flows into the unparseable-dates warning instead.
+    assert_eq!(parse_mrp_date("15/03/24"), None);
+    assert_eq!(parse_mrp_date("15/3/24"), None);
+    // Non-numeric or wrong-length year segments are also rejected.
+    assert_eq!(parse_mrp_date("15/03/2x24"), None);
+    assert_eq!(parse_mrp_date("15/03/+024"), None);
 }
 
 #[test]

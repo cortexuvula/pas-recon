@@ -50,9 +50,17 @@ pub fn parse_mrp_date(raw: &str) -> Option<NaiveDate> {
     if trimmed.contains('/') {
         let parts: Vec<&str> = trimmed.split('/').collect();
         if parts.len() == 3 {
+            let year_str = parts[2];
+            // Require a literal 4-digit year. Two-digit years ("15/03/24")
+            // previously parsed as year 24 AD — older than every real date,
+            // silently corrupting dedup ordering. Rejecting them routes the
+            // row into the unparseable-dates warning instead.
+            if year_str.len() != 4 || !year_str.chars().all(|c| c.is_ascii_digit()) {
+                return None;
+            }
             let day: u32 = parts[0].parse().ok()?;
             let month: u32 = parts[1].parse().ok()?;
-            let year: i32 = parts[2].parse().ok()?;
+            let year: i32 = year_str.parse().ok()?;
             return NaiveDate::from_ymd_opt(year, month, day);
         }
     }
