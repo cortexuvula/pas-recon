@@ -8,9 +8,15 @@
 //! This prevents collisions like the bare pattern `"last"` silently grabbing a
 //! `"Last Updated"` column when a `"Last Name"` column is the intended target.
 //!
-//! When two columns tie at the top score for a field, detection is ambiguous
-//! and surfaces an error instead of silently picking the first (PHN has always
-//! done this; it now applies to every recognized field).
+//! Two additional rules keep mappings sane:
+//! - When two columns tie at the top score for a field, detection is ambiguous
+//!   and surfaces an error instead of silently picking the first.
+//! - A column claimed with an *exact* match by one field is authoritative: no
+//!   other field may claim it at a lower score. This stops e.g. the bare
+//!   `"last"` whole-word match from mapping `last_name` onto a `"Last Updated"`
+//!   column (dates would render as surnames).
+
+use std::collections::HashSet;
 
 use crate::model::ColumnMapping;
 
@@ -76,9 +82,9 @@ fn is_whole_word_match(haystack: &str, needle: &str) -> bool {
 /// The outcome of searching for one field's column across all headers.
 enum BestMatch {
     None,
-    Single(usize),
+    Single { idx: usize, score: u8 },
     /// Two or more headers tied at the top specificity score.
-    Ambiguous(Vec<usize>),
+    Ambiguous { idxs: Vec<usize>, score: u8 },
 }
 
 /// Find the best-matching column for a field. Ties at the top score are
@@ -102,72 +108,133 @@ fn find_best_column(headers: &[String], patterns: &[&str]) -> BestMatch {
     }
     match matches.len() {
         0 => BestMatch::None,
-        1 => BestMatch::Single(matches[0]),
-        _ => BestMatch::Ambiguous(matches),
+        1 => BestMatch::Single { idx: matches[0], score: best_score },
+        _ => BestMatch::Ambiguous { idxs: matches, score: best_score },
     }
 }
 
-/// Best-effort single column find: the highest-scoring match, tie-broken by
-/// position. Kept `pub` for the manual-override path in `reconcile`, where the
-/// user has already intervened to pick the PHN and ambiguity in an optional
-/// column must not block the run (the picker only selects PHN).
-pub fn find_column(headers: &[String], patterns: &[&str]) -> Option<usize> {
-    match find_best_column(headers, patterns) {
-        BestMatch::None => None,
-        BestMatch::Single(i) => Some(i),
-        BestMatch::Ambiguous(idxs) => Some(idxs[0]),
-    }
-}
+/// A field's claim on a column: (column index, specificity score it won with).
+type Claim = Option<(usize, u8)>;
 
-/// Resolve an optional field, erroring on ambiguity.
+/// Resolve an optional field to a claim, erroring on top-score ties.
 fn require_unambiguous(
     headers: &[String],
     patterns: &[&str],
     field: &'static str,
-) -> Result<Option<usize>, DetectionError> {
+) -> Result<Claim, DetectionError> {
     match find_best_column(headers, patterns) {
         BestMatch::None => Ok(None),
-        BestMatch::Single(i) => Ok(Some(i)),
-        BestMatch::Ambiguous(idxs) => Err(DetectionError::AmbiguousColumn {
+        BestMatch::Single { idx, score } => Ok(Some((idx, score))),
+        BestMatch::Ambiguous { idxs, .. } => Err(DetectionError::AmbiguousColumn {
             field,
             candidates: idxs.iter().map(|&i| headers[i].clone()).collect(),
         }),
     }
 }
 
-/// Detect column mapping from headers. `is_pas` controls whether to look for
-/// MRP status/updated columns. Returns an error if any recognized field is
-/// missing (PHN only) or ambiguous (all fields, including PHN).
+/// Best-effort claim: ties resolve to the first candidate by position. Used
+/// where ambiguity must not block the run (the manual-override path, and
+/// advisory status/updated detection in EMR files).
+fn best_effort(headers: &[String], patterns: &[&str]) -> Claim {
+    match find_best_column(headers, patterns) {
+        BestMatch::None => None,
+        BestMatch::Single { idx, score } => Some((idx, score)),
+        BestMatch::Ambiguous { idxs, score } => Some((idxs[0], score)),
+    }
+}
+
+/// Drop lower-specificity claims on columns that another field claimed with an
+/// exact header match. Exact matches are authoritative: with headers like
+/// ["PHN", "DOB", "Last Updated"] and no "Last Name" column, the bare "last"
+/// whole-word match must not map `last_name` onto the date column that
+/// `mrp_updated` owns exactly — dates would render as surnames.
+fn resolve_conflicts(claims: &mut [Claim]) {
+    let exact: HashSet<usize> = claims
+        .iter()
+        .flatten()
+        .filter(|(_, score)| *score == 3)
+        .map(|(idx, _)| *idx)
+        .collect();
+    for claim in claims.iter_mut() {
+        if let Some((idx, score)) = *claim {
+            if score < 3 && exact.contains(&idx) {
+                *claim = None;
+            }
+        }
+    }
+}
+
+/// Detect column mapping from headers. `is_pas` controls whether MRP
+/// status/updated columns are surfaced. Returns an error if PHN is missing or
+/// any recognized field is ambiguous.
 pub fn detect_columns(headers: &[String], is_pas: bool) -> Result<ColumnMapping, DetectionError> {
     let phn = match find_best_column(headers, PHN_PATTERNS) {
         BestMatch::None => return Err(DetectionError::MissingPhnColumn),
-        BestMatch::Ambiguous(idxs) => {
+        BestMatch::Ambiguous { idxs, .. } => {
             return Err(DetectionError::AmbiguousPhnColumns {
                 candidates: idxs.iter().map(|&i| headers[i].clone()).collect(),
             })
         }
-        BestMatch::Single(i) => i,
+        BestMatch::Single { idx, .. } => idx,
     };
 
-    let first_name = require_unambiguous(headers, FIRST_PATTERNS, "first name")?;
-    let last_name = require_unambiguous(headers, LAST_PATTERNS, "last name")?;
-    let dob = require_unambiguous(headers, DOB_PATTERNS, "date of birth")?;
-
-    let (mrp_status, mrp_updated) = if is_pas {
-        (
-            require_unambiguous(headers, STATUS_PATTERNS, "MRP status")?,
-            require_unambiguous(headers, UPDATED_PATTERNS, "MRP updated")?,
-        )
-    } else {
-        (None, None)
-    };
+    let mut claims = [
+        require_unambiguous(headers, FIRST_PATTERNS, "first name")?,
+        require_unambiguous(headers, LAST_PATTERNS, "last name")?,
+        require_unambiguous(headers, DOB_PATTERNS, "date of birth")?,
+        if is_pas {
+            require_unambiguous(headers, STATUS_PATTERNS, "MRP status")?
+        } else {
+            // Advisory in EMR files (never surfaced): lets the conflict guard
+            // keep status-shaped columns out of the name fields without
+            // making ambiguous EMR status headers a hard error.
+            best_effort(headers, STATUS_PATTERNS)
+        },
+        if is_pas {
+            require_unambiguous(headers, UPDATED_PATTERNS, "MRP updated")?
+        } else {
+            best_effort(headers, UPDATED_PATTERNS) // advisory, as above
+        },
+    ];
+    resolve_conflicts(&mut claims);
+    let [first, last, dob, status, updated] = claims;
 
     Ok(ColumnMapping {
         phn,
-        first_name,
-        last_name,
-        dob,
-        mrp_status,
-        mrp_updated,
+        first_name: first.map(|(i, _)| i),
+        last_name: last.map(|(i, _)| i),
+        dob: dob.map(|(i, _)| i),
+        mrp_status: if is_pas { status.map(|(i, _)| i) } else { None },
+        mrp_updated: if is_pas { updated.map(|(i, _)| i) } else { None },
     })
+}
+
+/// Best-effort detection of every column except PHN, whose index comes from
+/// the manual column picker. Optional-field ambiguity resolves to the first
+/// candidate (the picker only selects PHN, so ambiguity must not block the
+/// run); the same exact-claim conflict guard as [`detect_columns`] applies.
+pub fn detect_columns_with_user_phn(
+    headers: &[String],
+    is_pas: bool,
+    phn_idx: usize,
+) -> ColumnMapping {
+    let mut claims = [
+        best_effort(headers, FIRST_PATTERNS),
+        best_effort(headers, LAST_PATTERNS),
+        best_effort(headers, DOB_PATTERNS),
+        // Advisory when not surfaced, as in detect_columns.
+        best_effort(headers, STATUS_PATTERNS),
+        best_effort(headers, UPDATED_PATTERNS),
+    ];
+    resolve_conflicts(&mut claims);
+    let [first, last, dob, status, updated] = claims;
+
+    ColumnMapping {
+        phn: phn_idx,
+        first_name: first.map(|(i, _)| i),
+        last_name: last.map(|(i, _)| i),
+        dob: dob.map(|(i, _)| i),
+        mrp_status: if is_pas { status.map(|(i, _)| i) } else { None },
+        mrp_updated: if is_pas { updated.map(|(i, _)| i) } else { None },
+    }
 }

@@ -225,11 +225,6 @@ fn detect_columns_with_phn_override(
     phn_idx: usize,
     source: CsvSource,
 ) -> Result<ColumnMapping, EngineError> {
-    use crate::detect::{
-        find_column, DOB_PATTERNS, FIRST_PATTERNS, LAST_PATTERNS, STATUS_PATTERNS,
-        UPDATED_PATTERNS,
-    };
-
     if headers.is_empty() || phn_idx >= headers.len() {
         return Err(EngineError::InvalidColumnIndex {
             source: source.to_string(),
@@ -237,26 +232,9 @@ fn detect_columns_with_phn_override(
             header_count: headers.len(),
         });
     }
-
-    // Optional fields use best-effort matching (first among ties). The manual
-    // picker only selects PHN, so ambiguity here must not block the run.
-    let (mrp_status, mrp_updated) = if is_pas {
-        (
-            find_column(headers, STATUS_PATTERNS),
-            find_column(headers, UPDATED_PATTERNS),
-        )
-    } else {
-        (None, None)
-    };
-
-    Ok(ColumnMapping {
-        phn: phn_idx,
-        first_name: find_column(headers, FIRST_PATTERNS),
-        last_name: find_column(headers, LAST_PATTERNS),
-        dob: find_column(headers, DOB_PATTERNS),
-        mrp_status,
-        mrp_updated,
-    })
+    Ok(crate::detect::detect_columns_with_user_phn(
+        headers, is_pas, phn_idx,
+    ))
 }
 
 /// Run the full pipeline. `emr_phn_column` / `pas_phn_column` override auto-detection
@@ -331,6 +309,11 @@ pub fn reconcile_with_columns(
         if emr_phns.contains(&pas_rec.phn) {
             // Matched
             matched += 1;
+            // Anything non-empty that isn't a known-OK status goes to review:
+            // the known review statuses (pending, deceased, removed, not the
+            // mrp) as before, plus unrecognized values (typos, new statuses)
+            // that must not be silently treated as confirmed-equivalent.
+            // Blank/unset stays "matched OK, not listed" by design.
             let is_review = pas_rec
                 .mrp_status
                 .as_deref()
@@ -343,7 +326,6 @@ pub fn reconcile_with_columns(
             if is_review {
                 pas_match_review.push(pas_to_display(pas_rec, &pas_mapping));
             }
-            // Confirmed or unset → matched OK, not listed
         } else {
             // PAS only
             pas_no_match.push(pas_to_display(pas_rec, &pas_mapping));

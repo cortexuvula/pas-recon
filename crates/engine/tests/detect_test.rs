@@ -101,3 +101,35 @@ fn ambiguous_status_column_returns_error() {
     let result = detect_columns(&parsed.headers, true);
     assert!(matches!(result, Err(DetectionError::AmbiguousColumn { field, .. }) if field == "MRP status"));
 }
+
+#[test]
+fn last_updated_not_double_booked_in_pas() {
+    // No "Last Name" column: the bare "last" whole-word match (score 2) must
+    // not also claim the "Last Updated" column that mrp_updated owns exactly
+    // (score 3) — otherwise dates render as surnames.
+    let parsed = parse_csv(&headers_csv(&["PHN", "Last Updated", "DOB"])).unwrap();
+    let mapping = detect_columns(&parsed.headers, true).unwrap();
+    assert_eq!(mapping.mrp_updated, Some(1));
+    assert_eq!(mapping.last_name, None, "date column must not be claimed as last_name");
+}
+
+#[test]
+fn last_updated_not_claimed_as_last_name_in_emr_mode() {
+    // EMR files never surface mrp_updated, but the advisory claim must still
+    // keep the date-shaped column out of last_name.
+    let parsed = parse_csv(&headers_csv(&["PHN", "Last Updated", "DOB"])).unwrap();
+    let mapping = detect_columns(&parsed.headers, false).unwrap();
+    assert_eq!(mapping.last_name, None, "dates must not render as surnames");
+    assert_eq!(mapping.mrp_updated, None, "EMR mode never surfaces mrp_updated");
+}
+
+#[test]
+fn emr_status_ambiguity_is_not_a_hard_error() {
+    // Status/updated detection is advisory in EMR mode, so an ambiguous pair
+    // (which would error for PAS) must not block an EMR run.
+    let parsed =
+        parse_csv(&headers_csv(&["PHN", "Status", "Attachment Status"])).unwrap();
+    let mapping = detect_columns(&parsed.headers, false).unwrap();
+    assert_eq!(mapping.phn, 0);
+    assert_eq!(mapping.mrp_status, None);
+}
