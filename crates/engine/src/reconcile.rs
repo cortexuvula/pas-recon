@@ -18,8 +18,10 @@ fn dedup_emr(records: Vec<EmrRecord>) -> Vec<EmrRecord> {
     records.into_iter().filter(|r| seen.insert(r.phn.clone())).collect()
 }
 
-/// Which status values put a matched PAS patient on the "review" list.
-const REVIEW_STATUSES: &[&str] = &["pending", "not the mrp", "deceased", "removed"];
+/// Matched-status values that need no review action. Any other non-empty
+/// status is unrecognized (a typo, or a value outside the known set) and is
+/// surfaced on the review list rather than silently treated as OK.
+const KNOWN_OK_STATUSES: &[&str] = &["confirmed"];
 
 /// Extract a trimmed, non-empty field from a row by optional column index.
 fn field(fields: &[String], idx: Option<usize>) -> Option<String> {
@@ -318,8 +320,8 @@ pub fn reconcile_with_columns(
                 .mrp_status
                 .as_deref()
                 .map(|s| {
-                    let lower = s.to_lowercase();
-                    REVIEW_STATUSES.contains(&lower.as_str())
+                    let lower = s.trim().to_lowercase();
+                    !lower.is_empty() && !KNOWN_OK_STATUSES.contains(&lower.as_str())
                 })
                 .unwrap_or(false);
 

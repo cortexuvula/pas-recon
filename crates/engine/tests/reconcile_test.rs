@@ -238,6 +238,40 @@ fn status_classification_is_case_insensitive() {
         "uppercase PENDING must still tally as pending");
 }
 
+// --- C7: Unrecognized MRP statuses surface for review ---
+
+#[test]
+fn matched_unknown_status_lands_in_review_list() {
+    // A typo'd status (here "DECESED") was previously treated as
+    // confirmed-equivalent: counted as matched but absent from every list.
+    // It must now be surfaced for human review, showing the raw status.
+    let emr = b"PHN,First,Last\n9876543218,John,Smith\n";
+    let pas = b"PHN,First,Last,MRP Status\n9876543218,John,Smith,DECESED\n";
+
+    let result = reconcile(&emr[..], &pas[..]).unwrap();
+    assert_eq!(result.summary.matched, 1);
+    assert_eq!(result.pas_match_review.len(), 1,
+        "unrecognized status must land on the review list");
+    assert_eq!(result.pas_match_review[0].mrp_status.as_deref(), Some("DECESED"));
+}
+
+#[test]
+fn matched_confirmed_and_blank_statuses_stay_unlisted() {
+    // Known-OK ("confirmed", any case) and blank statuses keep the existing
+    // design: matched, not listed, no action needed.
+    let emr = b"PHN,First,Last\n9876543218,John,Smith\n";
+    let pas = b"PHN,First,Last,MRP Status\n\
+9876543218,John,Smith,CONFIRMED\n\
+9871111223,Mary,Jones,\n";
+
+    let result = reconcile(&emr[..], &pas[..]).unwrap();
+    // EMR has only John; Mary is PAS-only (status irrelevant there).
+    assert_eq!(result.summary.matched, 1);
+    assert_eq!(result.pas_match_review.len(), 0,
+        "confirmed and blank statuses must not be listed for review");
+    assert_eq!(result.summary.pas_only, 1);
+}
+
 // --- C6: Truncation surfacing ---
 
 #[test]
