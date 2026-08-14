@@ -24,14 +24,28 @@ each release's binary; unflagging one sample also helps the ML model generalize.
 
 ### Current release details (fill in per release)
 
-| Field | v0.5.5 |
+**Post-signing baseline (since v0.5.6):** Windows builds are Authenticode-signed via
+Azure Trusted Signing, and `setup.exe` dropped from 4/75 (v0.5.5, unsigned) to **1/75**.
+The Microsoft `!ml` / Sophos ML clusters cleared. What remains, stable across v0.5.6 and
+v0.6.0, is exactly three files at 1/75 each — the two macOS DMGs and `setup.exe`. The MSI
+and Linux packages are clean. Before submitting anything, open each permalink and check
+**which** single engine is flagging: if it is Microsoft or Sophos, follow §1/§2 below; if
+it is a skip-tier engine (SecureAge, Arctic Wolf, etc.), follow §Skip — one engine out of
+75 with every major signature-based engine clean still matches the FP profile above.
+
+| Field | v0.6.0 |
 |---|---|
-| File | `PAS.Reconciliation_0.5.5_x64-setup.exe` |
-| SHA-256 | `247568d3de97f98c629e4bddfa72aa6272accf27681dce78e256aa85217236b3` |
-| Detection (Microsoft) | `Trojan:Win32/Wacatac.B!ml` |
-| Detection (Sophos) | `Generic ML PUA` |
-| VT permalink | https://www.virustotal.com/gui/file/247568d3de97f98c629e4bddfa72aa6272accf27681dce78e256aa85217236b3 |
-| Direct download | https://github.com/cortexuvula/pas-recon/releases/download/v0.5.5/PAS.Reconciliation_0.5.5_x64-setup.exe |
+| Flagged files (1/75 each) | `PAS.Reconciliation_0.6.0_x64-setup.exe`, `PAS.Reconciliation_0.6.0_x64.dmg`, `PAS.Reconciliation_0.6.0_aarch64.dmg` |
+| SHA-256 (setup.exe) | `6ee7770764f1245bb71bd23639943550362ef647043e3569a830a2631197bad5` |
+| SHA-256 (x64.dmg) | `4e57c529147a48dc66bc1b11a59fb3977cf859ed3aa8a610730cc78cc1a29583` |
+| SHA-256 (aarch64.dmg) | `6f2d933857a1d1605ff86652c434a41b92f5ff8b7dae3cd396a63fab1bbf8e21` |
+| Detection (Microsoft) | none confirmed — only one engine flags each file; verify via permalink |
+| Detection (Sophos) | none confirmed — only one engine flags each file; verify via permalink |
+| VT permalink (setup.exe) | https://www.virustotal.com/gui/file/6ee7770764f1245bb71bd23639943550362ef647043e3569a830a2631197bad5 |
+| Direct download | https://github.com/cortexuvula/pas-recon/releases/download/v0.6.0/PAS.Reconciliation_0.6.0_x64-setup.exe |
+
+History: v0.5.5 (unsigned) `setup.exe` 4/75 — `Trojan:Win32/Wacatac.B!ml` (Microsoft) +
+`Generic ML PUA` (Sophos) + two skip-tier engines. DMGs clean.
 
 ### 1. Microsoft (highest priority)
 
